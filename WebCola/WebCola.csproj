@@ -9,7 +9,7 @@
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <DebugType>full</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <TypeScriptToolsVersion>1.1</TypeScriptToolsVersion>
+    <TypeScriptToolsVersion>1.4</TypeScriptToolsVersion>
     <UseIISExpress>true</UseIISExpress>
     <IISExpressSSLPort />
     <IISExpressAnonymousAuthentication />
@@ -21,19 +21,19 @@
     <SccProvider>SAK</SccProvider>
   </PropertyGroup>
   <ItemGroup>
-    <Content Include="brain-app\brainapp.html" />
-    <TypeScriptCompile Include="brain-app\input.ts" />
     <Content Include="examples\3dLayout.html" />
     <Content Include="examples\brainnetwork2.html" />
     <Content Include="examples\dansgraph.html" />
     <Content Include="examples\dansgraph.js" />
     <Content Include="examples\disconnected_graphs.html" />
-    <Content Include="examples\alexnetwork.html" />
     <Content Include="examples\friendnetworks.html" />
     <Content Include="examples\egonetwork.html" />
     <Content Include="examples\graphdata\SucroseBreakdownDicots-flowlayout.svg" />
     <Content Include="examples\movies.html" />
     <Content Include="examples\browsemovies.html" />
+    <Content Include="examples\gridifiedSmallGroups.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="examples\statemachinepowergraph.html" />
     <Content Include="examples\pretrippowergraph.html" />
     <Content Include="examples\tetrisbugpowergraph.html" />
@@ -47,8 +47,9 @@
     <Content Include="examples\adam.html" />
     <Content Include="examples\unix.html" />
     <Content Include="examples\unix.png" />
-    <Content Include="src\adaptor.js" />
-    <Content Include="examples\smallgroups.html" />
+    <Content Include="examples\smallgroups.html">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
     <Content Include="examples\graphdata\biological_images\C00002.gif">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
@@ -142,6 +143,8 @@
     <Content Include="examples\graphdata\labels.txt" />
     <Content Include="examples\graphdata\signed_weighted.txt" />
     <Content Include="examples\graphdata\signed_weighted_affil.txt" />
+    <Content Include="examples\dotpowergraph.html" />
+    <Content Include="examples\vhybridize.html" />
     <Content Include="index.html" />
     <Content Include="examples\modifyinggraph.html" />
     <Content Include="examples\modifyinggraph.png" />
@@ -160,24 +163,26 @@
     <None Include="examples\graphdata\chris.json" />
     <Content Include="examples\rectangletest.js" />
     <Content Include="examples\smallnonoverlappinggraph.png" />
-    <Content Include="src\handle_disconnected.js" />
     <Content Include="style.css" />
     <Content Include="examples\sucrosebreakdown.png" />
     <Content Include="examples\nonoverlapping.html" />
     <Content Include="test\qunit.css" />
-    <TypeScriptCompile Include="brain-app\brain3d.ts" />
-    <TypeScriptCompile Include="brain-app\brainapp.ts" />
     <TypeScriptCompile Include="examples\3dlayout.ts" />
     <TypeScriptCompile Include="examples\powergraphexample.ts" />
     <TypeScriptCompile Include="examples\statemachinepowergraph.ts" />
     <TypeScriptCompile Include="examples\pretrip.ts" />
     <TypeScriptCompile Include="examples\tetrisbug.ts" />
     <TypeScriptCompile Include="examples\tmdbgraph.ts" />
+    <TypeScriptCompile Include="examples\dotpowergraph.ts" />
+    <TypeScriptCompile Include="examples\vhybridize.ts" />
+    <TypeScriptCompile Include="src\layout.ts" />
+    <TypeScriptCompile Include="src\d3adaptor.ts" />
     <TypeScriptCompile Include="src\geom.ts" />
     <Content Include="src\geom.js">
       <DependentUpon>geom.ts</DependentUpon>
     </Content>
     <TypeScriptCompile Include="src\gridrouter.ts" />
+    <TypeScriptCompile Include="src\handledisconnected.ts" />
     <TypeScriptCompile Include="src\linklengths.ts" />
     <TypeScriptCompile Include="src\powergraph.ts" />
     <Content Include="src\powergraph.js">
@@ -224,7 +229,10 @@
     <Content Include="test\test.html" />
     <Content Include="test\tests.js" />
     <Content Include="examples\graphdata\pre_trip.json" />
+    <Content Include="examples\graphdata\state_machine.json" />
     <None Include="examples\graphdata\test1.json" />
+    <TypeScriptCompile Include="test\apitests.ts" />
+    <TypeScriptCompile Include="test\qunit.d.ts" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="web.config" />

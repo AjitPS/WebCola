@@ -1,17 +1,17 @@
 ///<reference path="../src/vpsc.ts"/>
 ///<reference path="../src/rectangle.ts"/>
 ///<reference path="../src/gridrouter.ts"/>
+///<reference path="../src/layout.ts"/>
 ///<reference path="../extern/jquery.d.ts"/>
 ///<reference path="../extern/d3.d.ts"/>
 
-module tetrisbug {
+module statemachine {
     var width = 1280,
-        height = 650;
+        height = 800;
 
     var color = d3.scale.category10();
 
     var makeEdgeBetween;
-    var colans = <any>cola;
     var graphfile = "graphdata/state_machine.json";
     function makeSVG() {
         var svg = d3.select("body").append("svg")
@@ -32,7 +32,7 @@ module tetrisbug {
         return svg;
     }
     function flatGraph() {
-        var d3cola = colans.d3adaptor()
+        var d3cola = cola.d3adaptor()
             .linkDistance(150)
             .avoidOverlaps(true)
             .size([width, height]);
@@ -65,13 +65,13 @@ module tetrisbug {
                 .attr("width", d => d.width + 2 * margin)
                 .attr("height", d => d.height + 2 * margin)
                 .attr("rx", 4).attr("ry", 4)
-                .call(d3cola.drag);
+                .call((<any>d3cola).drag);
             var label = svg.selectAll(".label")
                 .data(graph.nodes)
                 .enter().append("text")
                 .attr("class", "label")
-                .text(d => d.name)
-                .call(d3cola.drag);
+                .text(d => d.name.replace(/_/g, ' '))
+                .call((<any>d3cola).drag);
 
             node.append("title")
                 .text(d => d.name);
@@ -95,7 +95,7 @@ module tetrisbug {
                     .attr("width", d => d.innerBounds.width())
                     .attr("height", d => d.innerBounds.height());
 
-                label.attr("x", d => d.x)
+                label.attr("x", d => d.innerBounds.x+7)
                     .attr("y", function (d) {
                         var h = this.getBBox().height;
                         return d.y + h / 3.5;
@@ -132,7 +132,7 @@ module tetrisbug {
     }
 
     function powerGraph() {
-        var d3cola = colans.d3adaptor()
+        var d3cola = cola.d3adaptor()
             .linkDistance(80)
             .handleDisconnected(false)
             .avoidOverlaps(true)
@@ -143,8 +143,8 @@ module tetrisbug {
         d3.json(graphfile, function (error, graph) {
             graph.nodes.forEach((v, i) => {
                 v.index = i;
-                v.width = 160;
-                v.height = 50;
+                v.width = 170;
+                v.height = 110;
             });
             var powerGraph;
 
@@ -153,8 +153,8 @@ module tetrisbug {
                 vs.forEach(v=> {
                     var index = Number(v.label) - 1;
                     var node = graph.nodes[index];
-                    node.y = Number(v.y) / 1.2;
-                    node.x = Number(v.x) * 1.6 - 70;
+                    node.x = Number(v.y) * 1.7 - 70;
+                    node.y = 700-Number(v.x) * 1.3;
                     node.fixed = 1;
                 });
                 var n = graph.nodes.length,
@@ -202,18 +202,25 @@ module tetrisbug {
                     .enter().append("rect")
                     .attr("class", "node")
                     .attr('x',d=>d.x)
-                    .attr('y',d=>d.y)
+                    .attr('y', d=> d.y += (d.name == 'starting_state' ||d.name == 'trip_cancelled'?30:0))
                     .attr("width", d => d.width)
-                    .attr("height", d => d.height)
+                    .attr("height", d => d.height -= (d.name == 'starting_state' || d.name == 'trip_cancelled'? 30 : 0))
                     .attr("rx", 4).attr("ry", 4)
-                    .call(d3cola.drag);
+                    .call((<any>d3cola).drag);
                 var label = svg.selectAll(".label")
                     .data(graph.nodes)
                     .enter().append("text")
                     .attr("class", "label")
                     .attr("transform", function (d) {
-                        return "translate(" + (d.x + 10) + "," + (d.y + 25 - d.height/2) + ")";
+                        return "translate(" + (d.x + 10) + "," + d.y + ")";
                     });
+                var detailLabel = svg.selectAll(".detailLabel")
+                    .data(graph.nodes)
+                    .enter().append("text")
+                    .attr("class", "detailLabel")
+                    .attr("transform", function (d) {
+                    return "translate(" + (d.x + 10) + "," + d.y + ")";
+                });
                     // .text(d => /*d.index +':' +*/ d.name)
                     // //.attr("x", d => d.x + d.width/2) // centred
                     // .style('text-anchor','start')
@@ -227,152 +234,71 @@ module tetrisbug {
                     var el = d3.select(this);
                     var words = d.name.split('_');
                     el.text('');
-                    words = [words[0]+' '+words[1]].concat(words.slice(2));
+                    d.lines = [words[0]+' '+words[1]].concat(words.slice(2));
+                    for (var i = 0; i < d.lines.length; i++) {
+                        var tspan = el.append('tspan').text(d.lines[i]);
+                        tspan.attr('x', 0).attr('dy', '20');
+                    }
+                };
+                var insertDetailLinebreaks = function (d) {
+                    if (!d.detail) return;
 
-                    for (var i = 0; i < words.length; i++) {
-                        var tspan = el.append('tspan').text(words[i]);
-                        tspan.attr('x', 0).attr('dy', '20')
-                            .style('text-anchor','start')
-                             .attr("font-size", "15");
-                        if (words.length < 2) {
-                            tspan.attr('y',10)
+                    var text = d3.select(this),
+                        words = d.detail.split(/\s+/).reverse(),
+                        word,
+                        line = [],
+                        lineNumber = 0,
+                        lineHeight = 1.2, // ems
+                        width = 160,
+                        y = d.lines.length * 20 + 20,//text.attr("y"),
+                        dy = 0, //parseFloat(text.attr("dy")),
+                        tspan = text.text(null).append("tspan").attr("x", 0).attr("y", y).attr("dy", dy + "em");
+                    while (word = words.pop()) {
+                        line.push(word);
+                        tspan.text(line.join(" "));
+                        if ((<any>tspan.node()).getComputedTextLength() > width) {
+                            line.pop();
+                            tspan.text(line.join(" "));
+                            line = [word];
+                            tspan = text.append("tspan").attr("x", 0).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
                         }
                     }
                 };
 
                 label.each(insertLinebreaks);
+                detailLabel.each(insertDetailLinebreaks);
 
                 node.append("title")
                     .text(d => d.name);
 
-                var routes = gridrouter.routeEdges<any>(g.edges, 10, e=> e.source, e=> e.target);
-                //var vLookup = {};
-                //var verts = [];
-                //g.edges.forEach((e, i) => {
-                //    if (e.source === 6 && e.target === 17 || e.source === 2 && e.target === 6) {
-                //        var route = routePaths[i];
-                //        route.forEach(v => {
-                //            var id = (<any>v).id;
-                //            if (!(id in vLookup)) {
-                //                (<any>vLookup)[id] = verts.length;
-                //                verts.push(v);
-                //            }
-                //            console.log("e"+e.source+","+e.target+": "+(<any>vLookup)[id]);
-                //        });
-                //    }
-                //});
-                //verts.forEach(v=> console.log("{x:" + v.x + ", y:" + v.y+"},"));
-
-                //var order = cola.GridRouter.orderEdges(routePaths);
-                //var routes = routePaths.map(function (e) { return cola.GridRouter.makeSegments(e); });
-                //cola.GridRouter.nudgeSegments(routes, 'x', 'y', order, 10);
-                //cola.GridRouter.nudgeSegments(routes, 'y', 'x', order, 10);
-
-                g.edges.forEach((e, j) => {
-                    var route = routes[j];
-                    var id = 'e'+e.source+'-'+e.target;
-                    var cornerradius = 10;
-                    var arrowwidth = 6;
-                    var arrowheight = 12;
-                    var c = color(e.type);
-                    var linewidth = 5;
-                    var path= 'M '+route[0][0].x+' '+route[0][0].y+' ';
-                    if (route.length>1) {
-                        for (var i = 0; i < route.length; i++) {
-                            var li = route[i];
-                            var x = li[1].x, y=li[1].y;
-                            var dx = x - li[0].x;
-                            var dy = y - li[0].y;
-                            if (i < route.length - 1) {
-                                if (Math.abs(dx) > 0) {
-                                    x -= dx/Math.abs(dx)*cornerradius;
-                                } else {
-                                    y -= dy/Math.abs(dy)*cornerradius;
-                                }
-                                path += 'L '+x+' '+y+' ';
-                                var l = route[i+1];
-                                var x0 = l[0].x, y0 = l[0].y;
-                                var x1 = l[1].x;
-                                var y1 = l[1].y;
-                                dx = x1 - x0;
-                                dy = y1 - y0;
-                                var angle = cola.GridRouter.angleBetween2Lines(li,l) < 0 ? 1: 0;
-                                console.log(cola.GridRouter.angleBetween2Lines(li,l))
-                                var x2,y2;
-                                if (Math.abs(dx) > 0) {
-                                    x2 = x0 + dx/Math.abs(dx)*cornerradius;
-                                    y2 = y0;
-                                } else {
-                                    x2 = x0;
-                                    y2 = y0 + dy/Math.abs(dy)*cornerradius;
-                                }
-                                var cx = Math.abs(x2-x);
-                                var cy = Math.abs(y2-y);
-                                path += 'A '+cx+' '+cy+' 0 0 '+angle+' '+x2+' '+y2+' ';
-                            } else {
-                                var arrowtip = [x,y];
-                                var arrowcorner1, arrowcorner2;
-                                if (Math.abs(dx) > 0) {
-                                    x -= dx/Math.abs(dx)*arrowheight;
-                                    arrowcorner1 = [x,y+arrowwidth];
-                                    arrowcorner2 = [x,y-arrowwidth];
-                                } else {
-                                    y -= dy/Math.abs(dy)*arrowheight;
-                                    arrowcorner1 = [x+arrowwidth,y];
-                                    arrowcorner2 = [x-arrowwidth,y];
-                                }
-                                path += 'L '+x+' '+y+' ';
-                                svg.append('path')
-                                    .attr('d', 'M '+arrowtip[0]+' '+arrowtip[1]+' L '+arrowcorner1[0]+' '+arrowcorner1[1]
-                                        +' L '+arrowcorner2[0]+ ' '+arrowcorner2[1] + ' Z')
-                                    .attr('stroke','#550000')
-                                    .attr('stroke-width',2);
-                                svg.append('path')
-                                    .attr('d', 'M '+arrowtip[0]+' '+arrowtip[1]+' L '+arrowcorner1[0]+' '+arrowcorner1[1]
-                                        +' L '+arrowcorner2[0]+ ' '+arrowcorner2[1])
-                                    .attr('stroke','none')
-                                    .attr('fill',c);
-                            }
-                        }
-                    } else {
-                        var li = route[0];
-                        var x = li[1].x, y=li[1].y;
-                        var dx = x - li[0].x;
-                        var dy = y - li[0].y;
-                        var arrowtip = [x,y];
-                        var arrowcorner1, arrowcorner2;
-                        if (Math.abs(dx) > 0) {
-                            x -= dx/Math.abs(dx)*arrowheight;
-                            arrowcorner1 = [x,y+arrowwidth];
-                            arrowcorner2 = [x,y-arrowwidth];
-                        } else {
-                            y -= dy/Math.abs(dy)*arrowheight;
-                            arrowcorner1 = [x+arrowwidth,y];
-                            arrowcorner2 = [x-arrowwidth,y];
-                        }
-                        path += 'L '+x+' '+y+' ';
+                var routes = gridrouter.routeEdges<any>(g.edges, 18, e=> e.source, e=> e.target);
+                routes.forEach((route, j) => {
+                    var cornerradius = 15;
+                    var arrowwidth = 13;
+                    var arrowheight = 18;
+                    var p = cola.GridRouter.getRoutePath(route, cornerradius, arrowwidth, arrowheight);
+                    var c = color(g.edges[j].type);
+                    var linewidth = 15;
+                    if (arrowheight > 0) {
                         svg.append('path')
-                            .attr('d', 'M '+arrowtip[0]+' '+arrowtip[1]+' L '+arrowcorner1[0]+' '+arrowcorner1[1]
-                                +' L '+arrowcorner2[0]+ ' '+arrowcorner2[1] + ' Z')
-                            .attr('stroke','#550000')
-                            .attr('stroke-width',2);
+                            .attr('d', p.arrowpath + ' Z')
+                            .attr('stroke', '#550000')
+                            .attr('stroke-width', 2);
                         svg.append('path')
-                            .attr('d', 'M '+arrowtip[0]+' '+arrowtip[1]+' L '+arrowcorner1[0]+' '+arrowcorner1[1]
-                                +' L '+arrowcorner2[0]+ ' '+arrowcorner2[1])
-                            .attr('stroke','none')
-                            .attr('fill',c);
+                            .attr('d', p.arrowpath)
+                            .attr('stroke', 'none')
+                            .attr('fill', c);
                     }
                     svg.append('path')
-                        .attr('d',path)
-                        .attr('fill','none')
+                        .attr('d', p.routepath)
+                        .attr('fill', 'none')
                         .attr('stroke', '#550000')
-                        .attr('stroke-width',linewidth+2);
+                        .attr('stroke-width', linewidth + 2);
                     svg.append('path')
-                        .attr('id',id)
-                        .attr('d',path)
-                        .attr('fill','none')
+                        .attr('d', p.routepath)
+                        .attr('fill', 'none')
                         .attr('stroke', c)
-                        .attr('stroke-width',linewidth);
+                        .attr('stroke-width', linewidth);
                 });
             }
             var linkTypes = getLinkTypes(graph.links);
@@ -393,20 +319,20 @@ module tetrisbug {
                 var N = graph.nodes.length;
                 modules.edges.push({ source: getId(e.source, N), target: getId(e.target, N) });
             });
-            //if (document.URL.toLowerCase().indexOf('marvl.infotech.monash.edu') >= 0) {
-            //    $.ajax({
-            //        type: 'post',
-            //        url: 'http://marvl.infotech.monash.edu/cgi-bin/test.py',
-            //        data: JSON.stringify(modules),
-            //        datatype: "json",
-            //        success: function (response) {
-            //            doLayout(response);
-            //        },
-            //        error: function (jqXHR, status, err) {
-            //            alert(status);
-            //        }
-            //    });
-            //} else
+            if (document.URL.toLowerCase().indexOf('marvl.infotech.monash.edu') >= 0) {
+                $.ajax({
+                    type: 'post',
+                    url: 'http://marvl.infotech.monash.edu/cgi-bin/test.py',
+                    data: JSON.stringify(modules),
+                    datatype: "json",
+                    success: function (response) {
+                        doLayout(response);
+                    },
+                    error: function (jqXHR, status, err) {
+                        alert(status);
+                    }
+                });
+            } else
             {
                 d3.json(graphfile.replace(/.json/,'pgresponse.json'), function (error, response) {
                     doLayout(response);

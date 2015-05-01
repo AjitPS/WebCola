@@ -9,6 +9,7 @@ module cola.vpsc {
     export interface Group {
         bounds: Rectangle;
         padding: number;
+        stiffness: number;
         leaves: Leaf[];
         groups: Group[];
         minVar: Variable;
@@ -390,7 +391,7 @@ module cola.vpsc {
         py: number;
     }
 
-    class IndexedVariable extends Variable {
+    export class IndexedVariable extends Variable {
         constructor(public index: number, w: number) {
             super(0, w);
         }
@@ -427,11 +428,12 @@ module cola.vpsc {
                 computeGroupBounds(rootGroup);
                 var i = nodes.length;
                 groups.forEach(g => {
-                    this.variables[i] = g.minVar = new IndexedVariable(i++, 0.01);
-                    this.variables[i] = g.maxVar = new IndexedVariable(i++, 0.01);
+                    this.variables[i] = g.minVar = new IndexedVariable(i++, typeof g.stiffness !== "undefined" ? g.stiffness : 0.01);
+                    this.variables[i] = g.maxVar = new IndexedVariable(i++, typeof g.stiffness !== "undefined" ? g.stiffness : 0.01);
                 });
             }
         }
+
 
         private createSeparation(c: any) : Constraint {
             return new Constraint(
@@ -476,7 +478,7 @@ module cola.vpsc {
                 .forEach(c => this.createAlignment(c));
         }
 
-        private setupVariablesAndBounds(x0: number[], y0: number[], desired: number[], getDesired: (v:GraphNode) => number) {
+        private setupVariablesAndBounds(x0: number[], y0: number[], desired: number[], getDesired: (v: GraphNode) => number) {
             this.nodes.forEach((v, i) => {
                 if (v.fixed) {
                     v.variable.weight = 1000;

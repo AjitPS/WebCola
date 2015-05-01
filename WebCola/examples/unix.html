@@ -39,10 +39,7 @@
     <h2>Directed graph flow layout and shortest-path edge routing</h2>
     <script src="../extern/graphlib-dot.min.js"> </script> 
     <script src="../extern/d3.v3.js"></script>
-    <script src="../cola.v3.min.js"></script>
-    <script src="../src/descent.js"></script>
-    <script src="../src/adaptor.js"></script>
-    <script src="../src/rectangle.js"></script>
+    <script src="../cola.min.js"></script>
     <link rel="stylesheet" href="../extern/hljs/styles/github.css">
     <script src="../extern/hljs/highlight.pack.js"></script>
     <script>
@@ -52,14 +49,10 @@
         var width = 960, height = 700;
 
         var outer = d3.select("body").append("svg")
-            .attr("width", width)
-            .attr("height", height)
-            .attr("pointer-events", "all");
+            .attr({ width: width, height: height, "pointer-events": "all" });
 
         outer.append('rect')
-            .attr('class', 'background')
-            .attr('width', "100%")
-            .attr('height', "100%")
+            .attr({ class: 'background', width: "100%", height: "100%" })
             .call(d3.behavior.zoom().on("zoom", redraw));
 
         var vis = outer
@@ -71,16 +64,19 @@
         }
 
         outer.append('svg:defs').append('svg:marker')
-            .attr('id', 'end-arrow')
-            .attr('viewBox', '0 -5 10 10')
-            .attr('refX', 8)
-            .attr('markerWidth', 6)
-            .attr('markerHeight', 6)
-            .attr('orient', 'auto')
+            .attr({
+                id: 'end-arrow',
+                viewBox: '0 -5 10 10',
+                refX: 8,
+                markerWidth: 6,
+                markerHeight: 6,
+                orient: 'auto'
+            })
           .append('svg:path')
-            .attr('d', 'M0,-5L10,0L0,5L2,0')
-            .attr('stroke-width', '0px')
-            .attr('fill', '#000');
+            .attr({
+                d: 'M0,-5L10,0L0,5L2,0',
+                'stroke-width': '0px',
+                fill: '#000'});
 
         d3.text("graphdata/unix.dot", function (f) {
             var digraph = graphlibDot.parse(f);
@@ -116,8 +112,8 @@
             var node = vis.selectAll(".node")
                 .data(nodes)
                 .enter().append("rect")
-                .attr("class", "node")
-                .attr("rx", 5).attr("ry", 5)
+                .classed("node", true)
+                .attr({ rx: 5, ry: 5 })
                 .call(d3cola.drag);
 
             var label = vis.selectAll(".label")
@@ -139,19 +135,20 @@
                 .interpolate("linear");
 
             var routeEdges = function () {
-                d3cola.prepareEdgeRouting(20);
+                d3cola.prepareEdgeRouting();
                 link.attr("d", function (d) {
                     return lineFunction(d3cola.routeEdge(d
-                    // // show visibility graph
-                        , function (g) {
-                            if (d.source.id === 10 && d.target.id === 11) {
-                            g.E.forEach(function (e) {
-                                vis.append("line").attr("x1", e.source.p.x).attr("y1", e.source.p.y)
-                                    .attr("x2", e.target.p.x).attr("y2", e.target.p.y)
-                                    .attr("stroke", "green");
-                            });
-                            }
-                        })); 
+                     // show visibility graph
+                        //, function (g) {
+                        //    if (d.source.id === 10 && d.target.id === 11) {
+                        //    g.E.forEach(function (e) {
+                        //        vis.append("line").attr("x1", e.source.p.x).attr("y1", e.source.p.y)
+                        //            .attr("x2", e.target.p.x).attr("y2", e.target.p.y)
+                        //            .attr("stroke", "green");
+                        //    });
+                        //    }
+                        //}
+        ));
                 });
                 if (isIE()) link.each(function (d) { this.parentNode.insertBefore(this, this) });
             }
@@ -159,7 +156,9 @@
                 node.each(function (d) { d.innerBounds = d.bounds.inflate(-margin); })
                     .attr("x", function (d) { return d.innerBounds.x; })
                     .attr("y", function (d) { return d.innerBounds.y; })
-                    .attr("width", function (d) { return d.innerBounds.width(); })
+                    .attr("width", function (d) {
+                        return d.innerBounds.width();
+                    })
                     .attr("height", function (d) { return d.innerBounds.height(); });
 
                 link.attr("d", function (d) {

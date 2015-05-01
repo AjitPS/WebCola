@@ -1,7 +1,7 @@
 module.exports = function (grunt) {
   require('load-grunt-tasks')(grunt);
   require('./tasks/examples')(grunt);
-
+  grunt.loadNpmTasks('typedoc');
   grunt.initConfig({
     pkg: grunt.file.readJSON('package.json'),
     watch: {
@@ -10,7 +10,7 @@ module.exports = function (grunt) {
         tasks: ["default"]
       },
       typescript: {
-        files: ["<%= typescript.base.src %>"],
+        files: ["<%= typescript.base.src %>","<%= typescript.examples.src %>"],
         tasks: ["typescript"]
       },
       test: {
@@ -21,11 +21,11 @@ module.exports = function (grunt) {
     typescript: {
       base: {
         src: ['WebCola/src/*.ts'],
-        dest: 'WebCola/compiledtypescript.js',
+        dest: 'WebCola/cola.js',
         options: {
           module: 'amd',
           target: 'es5',
-          sourcemap: false
+          sourceMap: true
         }
       },
       examples: {
@@ -33,7 +33,7 @@ module.exports = function (grunt) {
         options: {
           module: 'amd',
           target: 'es5',
-          sourcemap: false
+          sourceMap: true
         }
       }
     },
@@ -41,13 +41,11 @@ module.exports = function (grunt) {
       options: {},
       dist: {
         src: [
-          'WebCola/compiledtypescript.js',
-          'WebCola/src/adaptor.js',
           'WebCola/src/rbtree.js',
           'WebCola/src/scc.js',
-          'WebCola/src/handle_disconnected.js'
+          'WebCola/cola.js',
         ],
-        dest: 'WebCola/cola.v3.min.js'
+        dest: 'WebCola/cola.js'
       }
     },
     umd: {
@@ -60,15 +58,13 @@ module.exports = function (grunt) {
         }
       }
     },
-    uglify: {
+    uglify: {    
+      options: {
+        sourceMap: true
+      },
       dist: {
-        options: {
-          sourceMap: 'WebCola/cola.v3.min.map',
-          sourceMapIn: 'WebCola/compiledtypescript.js.map',
-          sourceMapRoot: 'WebCola'
-        },
         files: {
-          'WebCola/cola.v3.min.js': [
+          'WebCola/cola.min.js': [
             '<%= concat.dist.dest %>'
           ]
         }
@@ -80,23 +76,22 @@ module.exports = function (grunt) {
     examples: {
       all: ["WebCola/examples/*.html"]
     },
-    yuidoc: {
-      compile: {
-        name: 'cola.js',
-        description: 'Javascript constraint based layout for high-quality graph visualization and exploration using D3.js and other web-based graphics libraries.',
-        version: '1',
-        url: 'http://marvl.infotech.monash.edu/webcola',
-        options: {
-          paths: 'WebCola/src',
-          outdir: 'WebCola/doc'
-        }
-      }
+    typedoc: {
+      options: {
+          module: 'amd',
+          target: 'es5',
+          out: 'doc/',
+          name: 'WebCoLa AKA cola.js',
+          theme: 'minimal'
+      },
+      src: ["<%= typescript.base.src %>"]
     }
   });
  
   grunt.registerTask('default', ['typescript:base', 'concat', 'uglify', 'qunit']);
   grunt.registerTask('nougly', ['typescript:base', 'concat', 'qunit']);
   grunt.registerTask('nougly-notest', ['typescript', 'concat']);
-  grunt.registerTask('docs', ['yuidoc', 'typescript:examples']);
+  grunt.registerTask('docs', ['typedoc', 'typescript:examples']);
+  grunt.registerTask('examples', ['typescript:examples']);
   grunt.registerTask('full', ['default', 'typescript:examples', 'examples']);
 };
