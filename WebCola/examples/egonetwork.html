@@ -70,6 +70,7 @@
 </style>
 </head>
 <body>
+    <a href="../index.html">cola.js home</a>
     <!--<h1>Egocentric Network</h1>-->
     <div class="leftheading">Jonica’s network</div>
     <div class="rightheading">Alex’s network</div>
@@ -108,6 +109,9 @@
 
     var body = d3.select("body");
   
+    var getLinkId = function (d) {
+        return d.source.index + "-" + d.target.index;
+    };
 
     var egosvg = (function () {
         function egosvg(file) {
@@ -150,9 +154,7 @@
             this.d3cola.on("tick", null);
             this.d3cola.links(this.edges)
                 .symmetricDiffLinkLengths(8).start(0, 0, 10);
-            this.link.data(this.d3cola.links(), function (d) {
-                return d.source.index + "-" + d.target.index;
-            }).exit().remove();
+            this.link.data(this.d3cola.links(), getLinkId).exit().remove();
         };
 
         egosvg.prototype.connectNode0 = function () {
@@ -175,9 +177,7 @@
 
             var _this = this;
             this.link = this.edgegroup.selectAll(".link")
-                .data(this.edges, function (d) {
-                    return _this.d3cola.linkId(d);
-                });
+                .data(this.edges, getLinkId);
             this.link.enter().append("line")
                 .attr("class", "link")
                 .style("stroke-width", function (d) { return Math.sqrt(d.value); }).attr("x1", function (d) { return d.source.x; })
@@ -222,9 +222,7 @@
             nodes.forEach(function (v) { v.width = 20; v.height = 20; });
 
             this.link = this.edgegroup.selectAll(".link")
-                .data(this.d3cola.links(), function (d) {
-                    return _this.d3cola.linkId(d);
-                });
+                .data(this.d3cola.links(), getLinkId);
 
             this.link.enter().append("line")
                 .attr("class", "link")
@@ -263,5 +261,15 @@
 </script>
 <p class="info">This is the friend network of a particular person (the red node).  Since by definition there is a link from the red node to all the blue nodes (their friends),
     there's really no point showing all those links.  Therefore, pressing the button removes those links and rearranges the network to tidy it up.
+    <script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-63535113-1', 'auto');
+  ga('send', 'pageview');
+
+    </script>
 </body>
 </html>

@@ -9,7 +9,7 @@
     <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
     <DebugType>full</DebugType>
     <DebugSymbols>true</DebugSymbols>
-    <TypeScriptToolsVersion>1.4</TypeScriptToolsVersion>
+    <TypeScriptToolsVersion>1.6</TypeScriptToolsVersion>
     <UseIISExpress>true</UseIISExpress>
     <IISExpressSSLPort />
     <IISExpressAnonymousAuthentication />
@@ -19,8 +19,10 @@
     <SccLocalPath>SAK</SccLocalPath>
     <SccAuxPath>SAK</SccAuxPath>
     <SccProvider>SAK</SccProvider>
+    <UseGlobalApplicationHostFile />
   </PropertyGroup>
   <ItemGroup>
+    <Content Include="examples\3dtree.html" />
     <Content Include="examples\3dLayout.html" />
     <Content Include="examples\brainnetwork2.html" />
     <Content Include="examples\dansgraph.html" />
@@ -34,6 +36,8 @@
     <Content Include="examples\gridifiedSmallGroups.html">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Content>
+    <Content Include="examples\pageBoundsConstraints.png" />
+    <Content Include="examples\smallworldwithgroups.png" />
     <Content Include="examples\statemachinepowergraph.html" />
     <Content Include="examples\pretrippowergraph.html" />
     <Content Include="examples\tetrisbugpowergraph.html" />
@@ -45,6 +49,8 @@
     <Content Include="examples\ariel.html" />
     <Content Include="examples\tetrisbug.html" />
     <Content Include="examples\adam.html" />
+    <Content Include="examples\pageBoundsConstraints.html" />
+    <Content Include="examples\smallworldwithgroups.html" />
     <Content Include="examples\unix.html" />
     <Content Include="examples\unix.png" />
     <Content Include="examples\smallgroups.html">
@@ -167,6 +173,7 @@
     <Content Include="examples\sucrosebreakdown.png" />
     <Content Include="examples\nonoverlapping.html" />
     <Content Include="test\qunit.css" />
+    <TypeScriptCompile Include="examples\3dtree.ts" />
     <TypeScriptCompile Include="examples\3dlayout.ts" />
     <TypeScriptCompile Include="examples\powergraphexample.ts" />
     <TypeScriptCompile Include="examples\statemachinepowergraph.ts" />
@@ -175,6 +182,7 @@
     <TypeScriptCompile Include="examples\tmdbgraph.ts" />
     <TypeScriptCompile Include="examples\dotpowergraph.ts" />
     <TypeScriptCompile Include="examples\vhybridize.ts" />
+    <TypeScriptCompile Include="src\batch.ts" />
     <TypeScriptCompile Include="src\layout.ts" />
     <TypeScriptCompile Include="src\d3adaptor.ts" />
     <TypeScriptCompile Include="src\geom.ts" />
@@ -183,13 +191,14 @@
     </Content>
     <TypeScriptCompile Include="src\gridrouter.ts" />
     <TypeScriptCompile Include="src\handledisconnected.ts" />
+    <TypeScriptCompile Include="src\layout3d.ts" />
     <TypeScriptCompile Include="src\linklengths.ts" />
     <TypeScriptCompile Include="src\powergraph.ts" />
     <Content Include="src\powergraph.js">
       <DependentUpon>powergraph.ts</DependentUpon>
     </Content>
+    <TypeScriptCompile Include="src\rbtree.ts" />
     <TypeScriptCompile Include="src\vpsc.ts" />
-    <TypeScriptCompile Include="src\rbtree.d.ts" />
     <Content Include="src\rectangle.js">
       <DependentUpon>rectangle.ts</DependentUpon>
     </Content>
@@ -288,7 +297,7 @@
     </VisualStudio>
   </ProjectExtensions>
   <PropertyGroup Condition="'$(Configuration)' == 'Debug'">
-    <TypeScriptTarget>ES3</TypeScriptTarget>
+    <TypeScriptTarget>ES5</TypeScriptTarget>
     <TypeScriptIncludeComments>true</TypeScriptIncludeComments>
     <TypeScriptSourceMap>true</TypeScriptSourceMap>
     <TypeScriptModuleKind>AMD</TypeScriptModuleKind>

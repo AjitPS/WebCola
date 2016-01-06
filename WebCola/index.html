@@ -16,12 +16,20 @@
   margin-bottom: 2em;
 }
 
-.example img {
-  float: left;
-  margin-bottom: 13px;
+.examplecontainer {
   width: 226px;
   height: 180px;
-  border: solid 2px #ccc;
+  float: left
+}
+.example img {
+  margin-left: auto;
+  margin-right: auto;
+  margin-top: auto;
+  margin-bottom: auto;
+  max-width: 90%;
+  max-height: 90%;
+  height: auto;
+  border: solid 2px #fff;
 }
 
 .example:hover img {
@@ -45,7 +53,6 @@
 <div id="body">
 
     <header>
-        .
         <b><a href="./">Overview</a></b>
         <a style="margin-left:1em;" href="https://github.com/tgdwyer/WebCola/wiki">Wiki</a>
         <a style="margin-left:1em;" href="http://marvl.infotech.monash.edu/webcola/doc/index.html">API</a>
@@ -73,14 +80,20 @@
             "onlinebrowse",
             "alignment",
             "smallgroups",
-            "browsemovies",
+            "browsemovies.gif",
             "sucrosebreakdown",
             "unix",
             "ariel",
             "egonetwork",
             "disconnected_graphs",
             "powergraph",
-            "3dLayout"
+            "3dLayout.gif",
+            "dotpowergraph",
+            "gridifiedSmallGroups",
+            "3dtree.gif",
+            "cygenegene.gif",
+            "pageBoundsConstraints",
+            "smallworldwithgroups"
         ];
 
         function shuffle(array) {
@@ -100,14 +113,20 @@
 
             return array;
         }
-
         d3.select("#examples").selectAll(".example")
-            .data(shuffle(examples).slice(0, 16))
-          .enter().append("a")
+            .data(shuffle(examples).slice(0, 20))
+          .enter()
+            .append('div')
+            .attr('class', 'examplecontainer')
+            .append("a")
             .attr("class", "example")
-            .attr("href", function (d) { return "examples/" + d + ".html"; })
+            .attr("href", function (d) {
+                return "examples/" + (d.match(/\.gif/) ? d.slice(0, -4) : d) + ".html"
+            })
           .append("img")
-            .attr("src", function (d) { return "examples/" + d + ".png"; });
+            .attr("src", function (d) {
+                return "examples/" + d + (d.match(/\.gif/) ? '' : ".png")
+            });
 
     </script>
 
@@ -116,7 +135,7 @@
     <p><b>cola.js</b> (A.K.A. "WebCoLa") is an <a href="https://raw.github.com/tgdwyer/WebCola/master/LICENSE">open-source</a> JavaScript library for arranging your HTML5 documents and diagrams using constraint-based optimization techniques.
 
     <p>
-        It works well with libraries like <a href="http://d3js.org">D3.js</a> and <a href="http://www.svgjs.com">svg.js</a>.
+        It works well with libraries like <a href="http://d3js.org">D3.js</a>, <a href="http://www.svgjs.com">svg.js</a>, and <a href="http://js.cytoscape.org">Cytoscape.js</a>.
         The core layout is based on a complete rewrite in Javascript of the C++ <a href="http://adaptagrams.org">libcola</a> library.
     </p>
 
@@ -129,16 +148,18 @@
         </p>
         <p>
             Additional contributions gratefully received from:
-            <ul> <li>Maxim Shishmarev
-                </li>
+            <ul> <li>Maxim Shishmarev</li>
                 <li>Nicholas Smith</li>
                 <li><a href="https://github.com/bollwyvl">bollwyvl</a></li>
                 <li><a href="https://github.com/Craxic">Matt Ready</a></li>
+                <li><a href="https://github.com/maxkfranz">Max Franz</a></li>
             </ul> 
         </p>
     </aside>
+    
+    
     <p>
-        It has an adaptor for d3.js that allows you to use cola as a drop-in replacement for the <a href="https://github.com/mbostock/d3/wiki/Force-Layout">D3 force layout</a>.
+        It also has an adaptor for d3.js that allows you to use cola as a drop-in replacement for the <a href="https://github.com/mbostock/d3/wiki/Force-Layout">D3 force layout</a>.
         The layout converges to a local optimum unlike the D3 force layout, which forces convergence through a simple annealing strategy.
         Thus, compared to D3 force layout:
         <ul>
@@ -159,7 +180,7 @@
     </aside>    <p>
              cola.js can now (optionally) <a href="examples/unix.html">route edges to avoid intersections with node boundaries</a>.
         </p>
-    <h2>Getting Started</h2>
+    <h2>Getting Started with D3</h2>
         <p>
             Replacing D3 force layout with cola.js is easy.  Include the following in your html:
             <pre><code class="html">&lt;script src="http://marvl.infotech.monash.edu/webcola/cola.v3.min.js"&gt;&lt;/script&gt;</code></pre>
@@ -219,3 +240,22 @@
     <p>Click through the examples above to see other cola.js features in action.</p>
     <p>I'm currently working hard to add more options and to support more classes of constraints, so please watch this space - and don't be shy about <a href="http://marvl.infotech.monash.edu/~dwyer">sending me feedback</a>.</p>
 </div>
+
+<h2>Using cola.js in cytoscape.js</h2>
+<p>
+    Cytoscape.js has <a href="http://js.cytoscape.org/#layouts/cola">full support for Cola.js</a>.  Cytoscape.js has a full graph
+    theory model, highly customisable styling, gesture support, and layouts &mdash; such that Cola.js can be run in Cytoscape.js
+    in a single line of code:
+</p>
+
+<pre><code>cy.layout({ name: 'cola' /* and maybe some other options */ });</code></pre>
+<script>
+  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
+  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
+  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
+  })(window,document,'script','//www.google-analytics.com/analytics.js','ga');
+
+  ga('create', 'UA-63535113-1', 'auto');
+  ga('send', 'pageview');
+
+</script>

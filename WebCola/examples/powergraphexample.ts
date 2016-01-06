@@ -7,8 +7,6 @@ var width = 700,
     height = 350;
 
 var color = d3.scale.category20();
-var makeEdgeBetween;
-var colans = <any>cola;
 var graphfile = "graphdata/n7e23.json";
 
 
@@ -82,7 +80,7 @@ function createLabels(svg, graph, node, d3cola, margin) {
     return labels;
 }
 function flatGraph() {
-    var d3cola = colans.d3adaptor()
+    var d3cola = cola.d3adaptor()
         .linkDistance(80)
         .avoidOverlaps(true)
         .size([width, height]);
@@ -102,8 +100,7 @@ function flatGraph() {
             .data(graph.nodes)
             .enter().append("rect")
             .attr("class", "node")
-            .attr("rx", 4).attr("ry", 4)
-            .call(d3cola.drag);
+            .attr("rx", 4).attr("ry", 4);
 
         var label = createLabels(svg, graph, node, d3cola, margin);
 
@@ -118,14 +115,14 @@ function flatGraph() {
                 d => d.innerBounds = d.bounds.inflate(-margin)
                 );
             link.each(function (d) {
-                cola.vpsc.makeEdgeBetween(d, d.source.innerBounds, d.target.innerBounds, 5);
+                d.route = cola.vpsc.makeEdgeBetween(d.source.innerBounds, d.target.innerBounds, 5);
                 if (isIE()) this.parentNode.insertBefore(this, this);
             });
 
-            link.attr("x1", d => d.sourceIntersection.x)
-                .attr("y1", d => d.sourceIntersection.y)
-                .attr("x2", d => d.arrowStart.x)
-                .attr("y2", d => d.arrowStart.y);
+            link.attr("x1", d => d.route.sourceIntersection.x)
+                .attr("y1", d => d.route.sourceIntersection.y)
+                .attr("x2", d => d.route.arrowStart.x)
+                .attr("y2", d => d.route.arrowStart.y);
 
             node.attr("x", d => d.innerBounds.x)
                 .attr("y", d => d.innerBounds.y)
@@ -162,7 +159,7 @@ function getId(v, n) {
 }
 
 function powerGraph() {
-    var d3cola = colans.d3adaptor()
+    var d3cola = cola.d3adaptor()
         .convergenceThreshold(0.01)
         .linkDistance(80)
         .handleDisconnected(false)
@@ -197,8 +194,7 @@ function powerGraph() {
                 .attr("class", "node")
                 .attr("width", d => d.width + 2 * margin)
                 .attr("height", d => d.height + 2 * margin)
-                .attr("rx", 4).attr("ry", 4)
-                .call(d3cola.drag);
+                .attr("rx", 4).attr("ry", 4);
 
             var label = createLabels(svg, graph, node, d3cola, margin);
 
@@ -221,14 +217,14 @@ function powerGraph() {
                     });
                 group.each(d => d.innerBounds = d.bounds.inflate(-margin));
                 link.each(function (d) {
-                    cola.vpsc.makeEdgeBetween(d, d.source.innerBounds, d.target.innerBounds, 5);
+                    d.route = cola.vpsc.makeEdgeBetween(d.source.innerBounds, d.target.innerBounds, 5);
                     if (isIE()) this.parentNode.insertBefore(this, this);
                 });
 
-                link.attr("x1", d => d.sourceIntersection.x)
-                    .attr("y1", d => d.sourceIntersection.y)
-                    .attr("x2", d => d.arrowStart.x)
-                    .attr("y2", d => d.arrowStart.y);
+                link.attr("x1", d => d.route.sourceIntersection.x)
+                    .attr("y1", d => d.route.sourceIntersection.y)
+                    .attr("x2", d => d.route.arrowStart.x)
+                    .attr("y2", d => d.route.arrowStart.y);
 
                 node.attr("x", d => d.innerBounds.x)
                     .attr("y", d => d.innerBounds.y)
@@ -265,7 +261,7 @@ function powerGraph() {
             modules.edges.push({ source: getId(e.source, N), target: getId(e.target, N) });
         });
         if (document.URL.toLowerCase().indexOf('marvl.infotech.monash.edu') >= 0) {
-            $.ajax({
+            $.ajax(<JQueryAjaxSettings>{
                 type: 'post',
                 url: 'http://marvl.infotech.monash.edu/cgi-bin/test.py',
                 data: JSON.stringify(modules),
@@ -298,7 +294,7 @@ d3.select("#filemenu").on("change", function () {
 });
 
 function powerGraph2() {
-    var d3cola = colans.d3adaptor()
+    var d3cola = cola.d3adaptor()
         //.linkDistance(100)
         .jaccardLinkLengths(10, 0.5)
         .avoidOverlaps(true)
@@ -338,14 +334,12 @@ function powerGraph2() {
             .attr("class", "node")
             .attr("width", function (d) { return d.width + 2 * margin; })
             .attr("height", function (d) { return d.height + 2 * margin; })
-            .attr("rx", 4).attr("ry", 4)
-            .call(d3cola.drag);
+            .attr("rx", 4).attr("ry", 4);
         var label = svg.selectAll(".label")
             .data(graph.nodes)
             .enter().append("text")
             .attr("class", "label")
-            .text(function (d) { return d.name; })
-            .call(d3cola.drag);
+            .text(function (d) { return d.name; });
 
         node.append("title")
             .text(function (d) { return d.name; });
@@ -354,15 +348,15 @@ function powerGraph2() {
             node.each(function (d) { d.innerBounds = d.bounds.inflate(-margin) });
             group.each(function (d) { d.innerBounds = d.bounds.inflate(-margin) });
             link.each(function (d) {
-                cola.vpsc.makeEdgeBetween(d, d.source.innerBounds, d.target.innerBounds, 5);
+                d.route = cola.vpsc.makeEdgeBetween(d.source.innerBounds, d.target.innerBounds, 5);
                 if (isIE()) this.parentNode.insertBefore(this, this);
 
             });
 
-            link.attr("x1", function (d) { return d.sourceIntersection.x; })
-                .attr("y1", function (d) { return d.sourceIntersection.y; })
-                .attr("x2", function (d) { return d.arrowStart.x; })
-                .attr("y2", function (d) { return d.arrowStart.y; });
+            link.attr("x1", function (d) { return d.route.sourceIntersection.x; })
+                .attr("y1", function (d) { return d.route.sourceIntersection.y; })
+                .attr("x2", function (d) { return d.route.arrowStart.x; })
+                .attr("y2", function (d) { return d.route.arrowStart.y; });
 
             node.attr("x", function (d) { return d.innerBounds.x; })
                 .attr("y", function (d) { return d.innerBounds.y; })

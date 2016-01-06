@@ -1,9 +1,10 @@
-﻿/// <reference path="d3.v3.min.js"/>
+﻿/// <reference path="qunit.js"/>
+/// <reference path="qunit.d.ts"/>
+/// <reference path="../extern/d3.v3.min.js"/>
 /// <reference path="../src/layout.js"/>
 /// <reference path="../src/d3adaptor.js"/>
 /// <reference path="../src/shortestpaths.js"/>
 /// <reference path="../src/descent.js"/>
-/// <reference path="../src/cola.vpsc.js"/>
 /// <reference path="../src/rectangle.js"/>
 /// <reference path="../src/geom.js"/>
 /// <reference path="../src/powergraph.js"/>
@@ -119,12 +120,12 @@ asyncTest("edge lengths", function () {
             .linkDistance(length)
             .nodes(graph.nodes)
             .links(graph.links);
-        d3cola.start(10);
+        d3cola.start(100);
         var errors = graph.links.map(function (e) {
             var l = nodeDistance(e.source, e.target);
             return Math.abs(l - length(e));
         }), max = Math.max.apply(this, errors);
-        ok(max < 0.1);
+        ok(max < 0.1, "max = "+max);
         start();
     });
     ok(true);
@@ -132,26 +133,24 @@ asyncTest("edge lengths", function () {
 
 test("group", function () {
     var d3cola = cola.d3adaptor();
-
-    var length = function (l) {
-        return d3cola.linkId(l) == "2-3" ? 2 : 1;
-    }
     var nodes = [];
-    var u = { x: -5, y: 0, width: 10, height: 10 };
-    var v = { x: 5, y: 0, width: 10, height: 10 };
+    var u = { x: -5, y: 0, width: 10, height: 20 };
+    var v = { x: 5, y: 0, width: 10, height: 20 };
     var g = { padding: 10, leaves: [0] };
 
     d3cola
-        .linkDistance(length)
         .avoidOverlaps(true)
+        .handleDisconnected(false)
         .nodes([u,v])
         .groups([g]);
-    d3cola.start(10, 10, 10);
+
+    // just do overlap removal:
+    d3cola.start(0, 0, 10);
 
     ok(approxEquals(g.bounds.width(), 30, 0.1));
-    ok(approxEquals(g.bounds.height(), 30, 0.1));
+    ok(approxEquals(g.bounds.height(), 40, 0.1));
 
-    ok(approxEquals(Math.abs(u.y - v.y), 20, 0.1));
+    ok(approxEquals(Math.abs(u.x - v.x), 20, 0.1), "u.x: "+u.x+" v.x: "+v.x);
 });
 
 asyncTest("equality constraints", function () {
@@ -967,7 +966,7 @@ test("vpsc", function () {
 
 /// <reference path="rbtree.js"/>
 test("rbtree", function () {
-    var tree = new RBTree(function (a, b) { return a - b });
+    var tree = new cola.vpsc.RBTree(function (a, b) { return a - b });
     var data = [5, 8, 3, 1, 7, 6, 2];
     data.forEach(function (d) { tree.insert(d); });
     var it = tree.iterator(), item;

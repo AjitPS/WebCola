@@ -15,7 +15,9 @@ module cola {
          * @param x required position for node
          */
         add(id: number, x: number[]) {
+/* DEBUG
             if (isNaN(x[0]) || isNaN(x[1])) debugger;
+DEBUG */
             this.locks[id] = x;
         }
         /**
@@ -45,7 +47,12 @@ module cola {
 
     /**
      * Uses a gradient descent approach to reduce a stress or p-stress goal function over a graph with specified ideal edge lengths or a square matrix of dissimilarities.
-     *
+     * The standard stress function over a graph nodes with position vectors x,y,z is (mathematica input):
+     *   stress[x_,y_,z_,D_,w_]:=Sum[w[[i,j]] (length[x[[i]],y[[i]],z[[i]],x[[j]],y[[j]],z[[j]]]-d[[i,j]])^2,{i,Length[x]-1},{j,i+1,Length[x]}]
+     * where: D is a square matrix of ideal separations between nodes, w is matrix of weights for those separations
+     *        length[x1_, y1_, z1_, x2_, y2_, z2_] = Sqrt[(x1 - x2)^2 + (y1 - y2)^2 + (z1 - z2)^2]
+     * below, we use wij = 1/(Dij^2)
+     * 
      * @class Descent
      */
     export class Descent {
@@ -221,13 +228,14 @@ DEBUG */
                         weight = 1;
                     }
                     var D2: number = D * D;
-                    var gs: number = weight * (l - D) / (D2 * l);
-                    var hs: number = -weight / (D2 * l * l * l);
+                    var gs: number = 2 * weight * (l - D) / (D2 * l);
+                    var l3 = l * l * l;
+                    var hs: number = 2 * -weight / (D2 * l3);
                     if (!isFinite(gs))
                         console.log(gs);
                     for (i = 0; i < this.k; ++i) {
                         this.g[i][u] += d[i] * gs;
-                        Huu[i] -= this.H[i][u][v] = hs * (D * (d2[i] - sd2) + l * sd2);
+                        Huu[i] -= this.H[i][u][v] = hs * (l3 + D * (d2[i] - sd2) + l * sd2);
                     }
                 }
                 for (i = 0; i < this.k; ++i) maxH = Math.max(maxH, this.H[i][u][u] = Huu[i]);
@@ -294,13 +302,13 @@ DEBUG */
         // returns the scalar multiplier to apply to d to get the optimal step
         public computeStepSize(d: number[][]): number {
             var numerator = 0, denominator = 0;
-            for (var i = 0; i < 2; ++i) {
+            for (var i = 0; i < this.k; ++i) {
                 numerator += Descent.dotProd(this.g[i], d[i]);
                 Descent.rightMultiply(this.H[i], d[i], this.Hd[i]);
                 denominator += Descent.dotProd(d[i], this.Hd[i]);
             }
             if (denominator === 0 || !isFinite(denominator)) return 0;
-            return numerator / denominator;
+            return 1 * numerator / denominator;
         }
 
         public reduceStress(): number {
@@ -333,6 +341,19 @@ DEBUG */
             if (this.project) this.project[0](x0[0], x0[1], r[0]);
             this.takeDescentStep(r[1], d[1], stepSize);
             if (this.project) this.project[1](r[0], x0[1], r[1]);
+
+            // todo: allow projection against constraints in higher dimensions
+            for (var i = 2; i < this.k; i++) 
+                this.takeDescentStep(r[i], d[i], stepSize);
+
+            // the following makes locks extra sticky... but hides the result of the projection from the consumer
+            //if (!this.locks.isEmpty()) {
+            //    this.locks.apply((u, p) => {
+            //        for (var i = 0; i < this.k; i++) {
+            //            r[i][u] = p[i];
+            //        }
+            //    });
+            //}
         }
 
         private static mApply(m: number, n: number, f: (i: number, j: number) => any) {
@@ -348,11 +369,11 @@ DEBUG */
             this.computeDerivatives(x0);
             var alpha = this.computeStepSize(this.g);
             this.stepAndProject(x0, r, this.g, alpha);
-
+/* DEBUG
             for (var u: number = 0; u < this.n; ++u)
                 for (var i = 0; i < this.k; ++i)
                     if (isNaN(r[i][u])) debugger;
-
+DEBUG */
             if (this.project) {
                 this.matrixApply((i, j) => this.e[i][j] = x0[i][j] - r[i][j]);
                 var beta = this.computeStepSize(this.e);

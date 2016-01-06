@@ -119,12 +119,12 @@
 
                 // calculate current top left corner:
                 var corner = { x: center.x - g.width / 2, y: center.y - g.height / 2 };
-                var offset = { x: g.x - corner.x, y: g.y - corner.y };
+                var offset = { x: g.x - corner.x + svg_width / 2 - real_width / 2, y: g.y - corner.y + svg_height / 2 - real_height / 2};
 
                 // put nodes:
                 g.array.forEach(function (node) {
-                    node.x = node.x + offset.x + svg_width / 2 - real_width / 2;
-                    node.y = node.y + offset.y + svg_height / 2 - real_height / 2;
+                    node.x += offset.x;
+                    node.y += offset.y;
                 });
             });
         }
@@ -257,8 +257,10 @@
         }
     }
 
-    // seraration of disconnected graphs
-    // returns an array of {}
+    /** 
+     * connected components of graph
+     * returns an array of {}
+     */
     export function separateGraphs(nodes, links) {
         var marks = {};
         var ways = {};

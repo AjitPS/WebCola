@@ -22,22 +22,67 @@ module cola {
         listener?: () => void;
     }
     export interface Node {
+        /**
+         * index in nodes array, this is initialized by Layout.start()
+         */
+        index?: number;
+        /**
+         * x and y will be computed by layout as the Node's centroid
+         */
         x: number;
+        /**
+         * x and y will be computed by layout as the Node's centroid
+         */
         y: number;
-    }
-    export interface Link<NodeType> {
-        source: NodeType;
-        target: NodeType;
-        length?: number;
+        /**
+         * specify a width and height of the node's bounding box if you turn on avoidOverlaps
+         */
+        width?: number;
+        /**
+         * specify a width and height of the node's bounding box if you turn on avoidOverlaps
+         */
+        height?: number;
+        /**
+         * selective bit mask.  !=0 means layout will not move.
+         */
+        fixed: number;
     }
     
+    export interface Group {
+        bounds: vpsc.Rectangle;
+        leaves: Node[];
+        groups: Group[];
+    }
+
+    function isGroup(g: any): g is Group {
+        return typeof g.leaves !== 'undefined' || typeof g.groups !== 'undefined';
+    }
+    
+    export interface Link<NodeRefType> {
+        source: NodeRefType;
+        target: NodeRefType;
+
+        // ideal length the layout should try to achieve for this link
+        length?: number;
+
+        // how hard we should try to satisfy this link's ideal length
+        // must be in the range: 0 < weight <= 1
+        // if unspecified 1 is the default
+        weight?: number;
+    }
+    
+    type LinkNumericPropertyAccessor = (t: Link<Node | number>) => number;
+
+    interface LinkLengthTypeAccessor extends LinkLengthAccessor<Link<Node | number>> {
+        getType: LinkNumericPropertyAccessor;
+    }
     /**
      * Main interface to cola layout.  
      * @class Layout
      */
     export class Layout {
         private _canvasSize = [1, 1];
-        private _linkDistance: number | ((any) => number) = 20;
+        private _linkDistance: number | LinkNumericPropertyAccessor = 20;
         private _defaultNodeSize: number = 10;
         private _linkLengthCalculator = null;
         private _linkType = null;
@@ -48,9 +93,8 @@ module cola {
         private _running = false;
         private _nodes = [];
         private _groups = [];
-        private _variables = [];
         private _rootGroup = null;
-        private _links = [];
+        private _links: Link<Node | number>[] = [];
         private _constraints = [];
         private _distanceMatrix = null;
         private _descent: Descent = null;
@@ -64,7 +108,7 @@ module cola {
 
         // subscribe a listener to an event
         // sub-class and override this method to replace with a more sophisticated eventing mechanism
-        public on(e: EventType | string, listener: (Event) => void): Layout {
+        public on(e: EventType | string, listener: (event: Event) => void): Layout {
             // override me!
             if (!this.event) this.event = {};
             if (typeof e === 'string') {
@@ -99,13 +143,12 @@ module cola {
                 this.trigger({ type: EventType.end, alpha: this._alpha = 0, stress: this._lastStress });
                 return true;
             }
-
-            var n = this._nodes.length,
-                m = this._links.length,
-                o;
+            const n = this._nodes.length,
+                  m = this._links.length;
+            let o, i;
 
             this._descent.locks.clear();
-            for (var i = 0; i < n; ++i) {
+            for (i = 0; i < n; ++i) {
                 o = this._nodes[i];
                 if (o.fixed) {
                     if (typeof o.px === 'undefined' || typeof o.py === 'undefined') {
@@ -117,7 +160,7 @@ module cola {
                 }
             }
 
-            var s1 = this._descent.rungeKutta();
+            let s1 = this._descent.rungeKutta();
             //var s1 = descent.reduceStress();
             if (s1 === 0) {
                 this._alpha = 0;
@@ -126,19 +169,21 @@ module cola {
             }
             this._lastStress = s1;
 
-            for (var i = 0; i < n; ++i) {
-                o = this._nodes[i];
-                if (o.fixed) {
-                    o.x = o.px;
-                    o.y = o.py;
-                } else {
-                    o.x = this._descent.x[0][i];
-                    o.y = this._descent.x[1][i];
-                }
-            }
+            this.updateNodePositions();
 
             this.trigger({ type: EventType.tick, alpha: this._alpha, stress: this._lastStress });
             return false;
+        }
+
+        // copy positions out of descent instance into each of the nodes' center coords
+        private updateNodePositions(): void {
+            const x = this._descent.x[0], y = this._descent.x[1];
+            let o, i = this._nodes.length;
+            while (i--) {
+                o = this._nodes[i];
+                o.x = x[i];
+                o.y = y[i];
+            }
         }
 
         /**
@@ -154,9 +199,10 @@ module cola {
             if (!v) {
                 if (this._nodes.length === 0 && this._links.length > 0) {
                     // if we have links but no nodes, create the nodes array now with empty objects for the links to point at.
+                    // in this case the links are expected to be numeric indices for nodes in the range 0..n-1 where n is the number of nodes
                     var n = 0;
                     this._links.forEach(function (l) {
-                        n = Math.max(n, l.source, l.target);
+                        n = Math.max(n, <number>l.source, <number>l.target);
                     });
                     this._nodes = new Array(++n);
                     for (var i = 0; i < n; ++i) {
@@ -174,9 +220,9 @@ module cola {
          * @property groups {Array}
          * @default empty list
          */
-        groups(): Array<any>
-        groups(x: Array<any>): Layout
-        groups(x?: Array<any>): any {
+        groups(): Array<Group>
+        groups(x: Array<Group>): Layout
+        groups(x?: Array<Group>): any {
             if (!x) return this._groups;
             this._groups = x;
             this._rootGroup = {};
@@ -215,10 +261,12 @@ module cola {
         }
 
         /**
-         * if true, the layout will not permit overlaps of the node bounding boxes (defined by the width and height properties on nodes)
-         * @property avoidOverlaps
+         * if true, the final step of the start method will be to nicely pack connected components of the graph.
+         * works best if start() is called with a reasonable number of iterations specified and 
+         * each node has a bounding box (defined by the width and height properties on nodes).
+         * @property handleDisconnected
          * @type bool
-         * @default false
+         * @default true
          */
         handleDisconnected(): boolean
         handleDisconnected(v: boolean): Layout 
@@ -234,7 +282,7 @@ module cola {
          * @param axis {string} 'x' for left-to-right, 'y' for top-to-bottom
          * @param minSeparation {number|link=>number} either a number specifying a minimum spacing required across all links or a function to return the minimum spacing for each link
          */
-        flowLayout(axis: string, minSeparation: number|((any)=>number)): Layout {
+        flowLayout(axis: string, minSeparation: number|((t: any)=>number)): Layout {
             if (!arguments.length) axis = 'y';
             this._directedLinkConstraints = {
                 axis: axis,
@@ -329,9 +377,9 @@ module cola {
          * links have an ideal distance, The automatic layout will compute layout that tries to keep links (AKA edges) as close as possible to this length.
          */
         linkDistance(): number
-        linkDistance(): (any) => number
+        linkDistance(): LinkNumericPropertyAccessor
         linkDistance(x: number): Layout
-        linkDistance(x: (any) => number): Layout
+        linkDistance(x: LinkNumericPropertyAccessor): Layout
         linkDistance(x?: any): any {
             if (!x) {
                 return this._linkDistance;
@@ -374,21 +422,23 @@ module cola {
             }
         }
 
-        getLinkLength(link: any): number {
-            return typeof this._linkDistance === "function" ? +<number>((<any>this._linkDistance)(link)) : <number>this._linkDistance;
+        getLinkLength(link: Link<Node | number>): number {
+            return typeof this._linkDistance === "function" ? +((<LinkNumericPropertyAccessor>this._linkDistance)(link)) : <number>this._linkDistance;
         }
 
-        static setLinkLength(link: any, length: number) {
+        static setLinkLength(link: Link<Node|number>, length: number) {
             link.length = length;
         }
 
-        getLinkType(link: any): number {
+        getLinkType(link: Link<Node | number>): number {
             return typeof this._linkType === "function" ? this._linkType(link) : 0;
         }
 
-        linkAccessor = {
-            getSourceIndex: Layout.getSourceIndex, getTargetIndex: Layout.getTargetIndex, setLength: Layout.setLinkLength,
-            getType: (l) => typeof this._linkType === "function" ? this._linkType(l) : 0
+        linkAccessor: LinkLengthTypeAccessor = {
+            getSourceIndex: Layout.getSourceIndex,
+            getTargetIndex: Layout.getTargetIndex,
+            setLength: Layout.setLinkLength,
+            getType: l => typeof this._linkType === "function" ? this._linkType(l) : 0
         };
 
         /**
@@ -430,12 +480,14 @@ module cola {
          * @param {number} [initialUserConstraintIterations=0] initial layout iterations with user-specified constraints
          * @param {number} [initialAllConstraintsIterations=0] initial layout iterations with all constraints including non-overlap
          * @param {number} [gridSnapIterations=0] iterations of "grid snap", which pulls nodes towards grid cell centers - grid of size node[0].width - only really makes sense if all nodes have the same width and height
+         * @param [keepRunning=true] keep iterating asynchronously via the tick method
          */
         start(
             initialUnconstrainedIterations: number = 0,
             initialUserConstraintIterations: number = 0,
             initialAllConstraintsIterations: number = 0,
-            gridSnapIterations: number = 0
+            gridSnapIterations: number = 0,
+            keepRunning = true
         ): Layout {
             var i: number,
                 j: number,
@@ -445,12 +497,7 @@ module cola {
                 w = this._canvasSize[0],
                 h = this._canvasSize[1];
 
-            if (this._linkLengthCalculator) this._linkLengthCalculator();
-
             var x = new Array(N), y = new Array(N);
-            this._variables = new Array(N);
-
-            var makeVariable = (i, w) => this._variables[i] = new vpsc.IndexedVariable(i, w);
 
             var G = null;
 
@@ -463,6 +510,9 @@ module cola {
                 }
                 x[i] = v.x, y[i] = v.y;
             });
+
+            if (this._linkLengthCalculator) this._linkLengthCalculator();
+
             //should we do this to clearly label groups?
             //this._groups.forEach((g, i) => g.groupIndex = i);
 
@@ -476,10 +526,14 @@ module cola {
 
                 // G is a square matrix with G[i][j] = 1 iff there exists an edge between node i and node j
                 // otherwise 2. (
-                G = cola.Descent.createSquareMatrix(N,() => 2);
+                G = cola.Descent.createSquareMatrix(N, () => 2);
+                this._links.forEach(l => {
+                    if (typeof l.source == "number") l.source = this._nodes[<number>l.source];
+                    if (typeof l.target == "number") l.target = this._nodes[<number>l.target];
+                });
                 this._links.forEach(e => {
-                    var u = Layout.getSourceIndex(e), v = Layout.getTargetIndex(e);
-                    G[u][v] = G[v][u] = 1;
+                    const u = Layout.getSourceIndex(e), v = Layout.getTargetIndex(e);
+                    G[u][v] = G[v][u] = e.weight || 1;
                 });
             }
 
@@ -540,11 +594,14 @@ module cola {
             this._descent.threshold = this._threshold;
 
             // apply initialIterations without user constraints or nonoverlap constraints
-            this._descent.run(initialUnconstrainedIterations);
+            // if groups are specified, dummy nodes and edges will be added to untangle
+            // with respect to group connectivity
+            this.initialLayout(initialUnconstrainedIterations, x, y);
 
             // apply initialIterations with user constraints but no nonoverlap constraints
             if (curConstraints.length > 0) this._descent.project = new cola.vpsc.Projection(this._nodes, this._groups, this._rootGroup, curConstraints).projectFunctions();
             this._descent.run(initialUserConstraintIterations);
+            this.separateOverlappingComponents(w, h);
 
             // subsequent iterations will apply all constraints
             this.avoidOverlaps(ao);
@@ -571,25 +628,64 @@ module cola {
                 this._descent.run(gridSnapIterations);
             }
 
-            this._links.forEach(l => {
-                if (typeof l.source == "number") l.source = this._nodes[l.source];
-                if (typeof l.target == "number") l.target = this._nodes[l.target];
-            });
-            this._nodes.forEach(function (v, i) {
-                v.x = x[i], v.y = y[i];
-            });
+            this.updateNodePositions();
+            this.separateOverlappingComponents(w, h);
+            return keepRunning ? this.resume() : this;
+        }
 
+        private initialLayout(iterations: number, x: number[], y: number[]) {
+            if (this._groups.length > 0 && iterations > 0) {        
+                // construct a flat graph with dummy nodes for the groups and edges connecting group dummy nodes to their children
+                // todo: edges attached to groups are replaced with edges connected to the corresponding group dummy node
+                var n = this._nodes.length;
+                var edges = this._links.map(e => <any>{ source: (<Node>e.source).index, target: (<Node>e.target).index });
+                var vs = this._nodes.map(v => <any>{ index: v.index });
+                this._groups.forEach((g, i) => {
+                    vs.push(<any>{ index: g.index = n + i });
+                });
+                this._groups.forEach((g, i) => {
+                    if (typeof g.leaves !== 'undefined')
+                        g.leaves.forEach(v => edges.push({ source: g.index, target: v.index }));
+                    if (typeof g.groups !== 'undefined')
+                        g.groups.forEach(gg => edges.push({ source: g.index, target: gg.index }));
+                });
+
+                // layout the flat graph with dummy nodes and edges
+                new cola.Layout()
+                    .size(this.size())
+                    .nodes(vs)
+                    .links(edges)
+                    .avoidOverlaps(false)
+                    .linkDistance(this.linkDistance())
+                    .symmetricDiffLinkLengths(5)
+                    .convergenceThreshold(1e-4)
+                    .start(iterations, 0, 0, 0, false);
+
+                this._nodes.forEach(v => {
+                    x[v.index] = vs[v.index].x;
+                    y[v.index] = vs[v.index].y;
+                });
+            } else {
+                this._descent.run(iterations);
+            }
+        }
+        
+        // recalculate nodes position for disconnected graphs
+        private separateOverlappingComponents(width: number, height: number): void {
             // recalculate nodes position for disconnected graphs
             if (!this._distanceMatrix && this._handleDisconnected) {
+                let x = this._descent.x[0], y = this._descent.x[1];
+                this._nodes.forEach(function (v, i) { v.x = x[i], v.y = y[i]; });
                 var graphs = cola.separateGraphs(this._nodes, this._links);
-                cola.applyPacking(graphs, w, h, this._defaultNodeSize);
-
+                cola.applyPacking(graphs, width, height, this._defaultNodeSize);
                 this._nodes.forEach((v, i) => {
                     this._descent.x[0][i] = v.x, this._descent.x[1][i] = v.y;
+                    if (v.bounds) {
+                        v.bounds.setXCentre(v.x);
+                        v.bounds.setYCentre(v.y);
+                    }
                 });
             }
-
-            return this.resume();
         }
 
         resume(): Layout {
@@ -600,6 +696,8 @@ module cola {
             return this.alpha(0);
         }
 
+        /// find a visibility graph over the set of nodes.  assumes all nodes have a
+        /// bounds property (a rectangle) and that no pair of bounds overlaps.
         prepareEdgeRouting(nodeMargin: number = 0) {
             this._visibilityGraph = new cola.geom.TangentVisibilityGraph(
                 this._nodes.map(function (v) {
@@ -607,17 +705,21 @@ module cola {
                 }));
         }
 
-        routeEdge(d, draw) {
+        /// find a route avoiding node bounds for the given edge.
+        /// assumes the visibility graph has been created (by prepareEdgeRouting method)
+        /// and also assumes that nodes have an index property giving their position in the
+        /// node array.  This index property is created by the start() method.
+        routeEdge(edge, draw) {
             var lineData = [];
             //if (d.source.id === 10 && d.target.id === 11) {
             //    debugger;
             //}
             var vg2 = new cola.geom.TangentVisibilityGraph(this._visibilityGraph.P, { V: this._visibilityGraph.V, E: this._visibilityGraph.E }),
-                port1 = <geom.TVGPoint>{ x: d.source.x, y: d.source.y },
-                port2 = <geom.TVGPoint>{ x: d.target.x, y: d.target.y },
-                start = vg2.addPoint(port1, d.source.id),
-                end = vg2.addPoint(port2, d.target.id);
-            vg2.addEdgeIfVisible(port1, port2, d.source.id, d.target.id);
+                port1 = <geom.TVGPoint>{ x: edge.source.x, y: edge.source.y },
+                port2 = <geom.TVGPoint>{ x: edge.target.x, y: edge.target.y },
+                start = vg2.addPoint(port1, edge.source.index),
+                end = vg2.addPoint(port2, edge.target.index);
+            vg2.addEdgeIfVisible(port1, port2, edge.source.index, edge.target.index);
             if (typeof draw !== 'undefined') {
                 draw(vg2);
             }
@@ -625,16 +727,16 @@ module cola {
                 spCalc = new cola.shortestpaths.Calculator(vg2.V.length, vg2.E, sourceInd, targetInd, length),
                 shortestPath = spCalc.PathFromNodeToNode(start.id, end.id);
             if (shortestPath.length === 1 || shortestPath.length === vg2.V.length) {
-                cola.vpsc.makeEdgeBetween(d, d.source.innerBounds, d.target.innerBounds, 5);
-                lineData = [{ x: d.sourceIntersection.x, y: d.sourceIntersection.y }, { x: d.arrowStart.x, y: d.arrowStart.y }];
+                let route = cola.vpsc.makeEdgeBetween(edge.source.innerBounds, edge.target.innerBounds, 5);
+                lineData = [route.sourceIntersection, route.arrowStart];
             } else {
                 var n = shortestPath.length - 2,
                     p = vg2.V[shortestPath[n]].p,
                     q = vg2.V[shortestPath[0]].p,
-                    lineData = [d.source.innerBounds.rayIntersection(p.x, p.y)];
+                    lineData = [edge.source.innerBounds.rayIntersection(p.x, p.y)];
                 for (var i = n; i >= 0; --i)
                     lineData.push(vg2.V[shortestPath[i]].p);
-                lineData.push(cola.vpsc.makeEdgeTo(q, d.target.innerBounds, 5));
+                lineData.push(cola.vpsc.makeEdgeTo(q, edge.target.innerBounds, 5));
             }
             //lineData.forEach((v, i) => {
             //    if (i > 0) {
@@ -652,16 +754,17 @@ module cola {
         }
 
         //The link source and target may be just a node index, or they may be references to nodes themselves.
-        static getSourceIndex(e) {
-            return typeof e.source === 'number' ? e.source : e.source.index;
+        static getSourceIndex(e: Link<Node | number>): number {
+            return typeof e.source === 'number' ? <number>e.source : (<Node>e.source).index;
         }
 
         //The link source and target may be just a node index, or they may be references to nodes themselves.
-        static getTargetIndex(e) {
-            return typeof e.target === 'number' ? e.target : e.target.index;
+        static getTargetIndex(e: Link<Node | number>): number {
+            return typeof e.target === 'number' ? <number>e.target : (<Node>e.target).index;
         }
+
         // Get a string ID for a given link.
-        static linkId(e) {
+        static linkId(e: Link<Node | number>): string {
             return Layout.getSourceIndex(e) + "-" + Layout.getTargetIndex(e);
         }
 
@@ -669,23 +772,98 @@ module cola {
         // Bit 1 can be set externally (e.g., d.fixed = true) and show persist.
         // Bit 2 stores the dragging state, from mousedown to mouseup.
         // Bit 3 stores the hover state, from mouseover to mouseout.
-        // Dragend is a special case: it also clears the hover state.
-
-        static dragStart(d) {
-            d.fixed |= 2; // set bit 2
-            d.px = d.x, d.py = d.y; // set velocity to zero
+        static dragStart(d: Node | Group) {
+            if (isGroup(d)) {
+                Layout.storeOffset(d, Layout.dragOrigin(d));
+            } else {
+                Layout.stopNode(d);
+                d.fixed |= 2; // set bit 2
+            }
         }
 
+        // we clobber any existing desired positions for nodes
+        // in case another tick event occurs before the drag
+        private static stopNode(v: Node) {
+            (<any>v).px = v.x;
+            (<any>v).py = v.y;
+        }
+
+        // we store offsets for each node relative to the centre of the ancestor group 
+        // being dragged in a pair of properties on the node
+        private static storeOffset(d: Group, origin: { x: number, y: number }) {
+            if (typeof d.leaves !== 'undefined') {
+                d.leaves.forEach(v => {
+                    v.fixed |= 2;
+                    Layout.stopNode(v);
+                    (<any>v)._dragGroupOffsetX = v.x - origin.x;
+                    (<any>v)._dragGroupOffsetY = v.y - origin.y;
+                });
+            }
+            if (typeof d.groups !== 'undefined') {
+                d.groups.forEach(g => Layout.storeOffset(g, origin));
+            }
+        }
+
+        // the drag origin is taken as the centre of the node or group
+        static dragOrigin(d: Node | Group): { x: number, y: number } {
+            if (isGroup(d)) {
+                return {
+                    x: d.bounds.cx(),
+                    y: d.bounds.cy()
+                };
+            } else {
+                return d;
+            }
+        }
+
+        // for groups, the drag translation is propagated down to all of the children of
+        // the group.
+        static drag(d: Node | Group, position: { x: number, y: number }) {
+            if (isGroup(d)) {
+                if (typeof d.leaves !== 'undefined') {
+                    d.leaves.forEach(v => {
+                        d.bounds.setXCentre(position.x);
+                        d.bounds.setYCentre(position.y);
+                        (<any>v).px = (<any>v)._dragGroupOffsetX + position.x;
+                        (<any>v).py = (<any>v)._dragGroupOffsetY + position.y;
+                    });
+                }
+                if (typeof d.groups !== 'undefined') {
+                    d.groups.forEach(g => Layout.drag(g, position));
+                }
+            } else {
+                (<any>d).px = position.x;
+                (<any>d).py = position.y;
+            }
+        }
+
+        // we unset only bits 2 and 3 so that the user can fix nodes with another a different
+        // bit such that the lock persists between drags 
         static dragEnd(d) {
-            d.fixed &= ~6; // unset bits 2 and 3
-            //d.fixed = 0;
+            if (isGroup(d)) {
+                if (typeof d.leaves !== 'undefined') {
+                    d.leaves.forEach(v => {
+                        Layout.dragEnd(v);
+                        delete (<any>v)._dragGroupOffsetX;
+                        delete (<any>v)._dragGroupOffsetY;
+                    });
+                }
+                if (typeof d.groups !== 'undefined') {
+                    d.groups.forEach(Layout.dragEnd);
+                }
+            } else {
+                d.fixed &= ~6; // unset bits 2 and 3
+                //d.fixed = 0;
+            }
         }
 
+        // in d3 hover temporarily locks nodes, currently not used in cola
         static mouseOver(d) {
             d.fixed |= 4; // set bit 3
             d.px = d.x, d.py = d.y; // set velocity to zero
         }
-
+        
+        // in d3 hover temporarily locks nodes, currently not used in cola
         static mouseOut(d) {
             d.fixed &= ~4; // unset bit 3
         }

@@ -1,500 +1,3 @@
-//Based on js_bintrees:
-//
-//https://github.com/vadimg/js_bintrees
-//
-//Copyright (C) 2011 by Vadim Graboys
-//
-//Permission is hereby granted, free of charge, to any person obtaining a copy
-//of this software and associated documentation files (the "Software"), to deal
-//in the Software without restriction, including without limitation the rights
-//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//copies of the Software, and to permit persons to whom the Software is
-//furnished to do so, subject to the following conditions:
-//
-//The above copyright notice and this permission notice shall be included in
-//all copies or substantial portions of the Software.
-//
-//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-//THE SOFTWARE.
-
-RBTree = (function (window) {
-var global = window;
-var require = function(name) {
-    var fn = require.m[name];
-    if (fn.mod) {
-        return fn.mod.exports;
-    }
-
-    var mod = fn.mod = { exports: {} };
-    fn(mod, mod.exports);
-    return mod.exports;
-};
-
-require.m = {};
-require.m['./treebase'] = function(module, exports) {
-
-function TreeBase() {}
-
-// removes all nodes from the tree
-TreeBase.prototype.clear = function() {
-    this._root = null;
-    this.size = 0;
-};
-
-// returns node data if found, null otherwise
-TreeBase.prototype.find = function(data) {
-    var res = this._root;
-
-    while(res !== null) {
-        var c = this._comparator(data, res.data);
-        if(c === 0) {
-            return res.data;
-        }
-        else {
-            res = res.get_child(c > 0);
-        }
-    }
-
-    return null;
-};
-
-// returns iterator to node if found, null otherwise
-TreeBase.prototype.findIter = function(data) {
-    var res = this._root;
-    var iter = this.iterator();
-
-    while(res !== null) {
-        var c = this._comparator(data, res.data);
-        if(c === 0) {
-            iter._cursor = res;
-            return iter;
-        }
-        else {
-            iter._ancestors.push(res);
-            res = res.get_child(c > 0);
-        }
-    }
-
-    return null;
-};
-
-// Returns an interator to the tree node immediately before (or at) the element
-TreeBase.prototype.lowerBound = function(data) {
-    return this._bound(data, this._comparator);
-};
-
-// Returns an interator to the tree node immediately after (or at) the element
-TreeBase.prototype.upperBound = function(data) {
-    var cmp = this._comparator;
-
-    function reverse_cmp(a, b) {
-        return cmp(b, a);
-    }
-
-    return this._bound(data, reverse_cmp);
-};
-
-// returns null if tree is empty
-TreeBase.prototype.min = function() {
-    var res = this._root;
-    if(res === null) {
-        return null;
-    }
-
-    while(res.left !== null) {
-        res = res.left;
-    }
-
-    return res.data;
-};
-
-// returns null if tree is empty
-TreeBase.prototype.max = function() {
-    var res = this._root;
-    if(res === null) {
-        return null;
-    }
-
-    while(res.right !== null) {
-        res = res.right;
-    }
-
-    return res.data;
-};
-
-// returns a null iterator
-// call next() or prev() to point to an element
-TreeBase.prototype.iterator = function() {
-    return new Iterator(this);
-};
-
-// calls cb on each node's data, in order
-TreeBase.prototype.each = function(cb) {
-    var it=this.iterator(), data;
-    while((data = it.next()) !== null) {
-        cb(data);
-    }
-};
-
-// calls cb on each node's data, in reverse order
-TreeBase.prototype.reach = function(cb) {
-    var it=this.iterator(), data;
-    while((data = it.prev()) !== null) {
-        cb(data);
-    }
-};
-
-// used for lowerBound and upperBound
-TreeBase.prototype._bound = function(data, cmp) {
-    var cur = this._root;
-    var iter = this.iterator();
-
-    while(cur !== null) {
-        var c = this._comparator(data, cur.data);
-        if(c === 0) {
-            iter._cursor = cur;
-            return iter;
-        }
-        iter._ancestors.push(cur);
-        cur = cur.get_child(c > 0);
-    }
-
-    for(var i=iter._ancestors.length - 1; i >= 0; --i) {
-        cur = iter._ancestors[i];
-        if(cmp(data, cur.data) > 0) {
-            iter._cursor = cur;
-            iter._ancestors.length = i;
-            return iter;
-        }
-    }
-
-    iter._ancestors.length = 0;
-    return iter;
-};
-
-
-function Iterator(tree) {
-    this._tree = tree;
-    this._ancestors = [];
-    this._cursor = null;
-}
-
-Iterator.prototype.data = function() {
-    return this._cursor !== null ? this._cursor.data : null;
-};
-
-// if null-iterator, returns first node
-// otherwise, returns next node
-Iterator.prototype.next = function() {
-    if(this._cursor === null) {
-        var root = this._tree._root;
-        if(root !== null) {
-            this._minNode(root);
-        }
-    }
-    else {
-        if(this._cursor.right === null) {
-            // no greater node in subtree, go up to parent
-            // if coming from a right child, continue up the stack
-            var save;
-            do {
-                save = this._cursor;
-                if(this._ancestors.length) {
-                    this._cursor = this._ancestors.pop();
-                }
-                else {
-                    this._cursor = null;
-                    break;
-                }
-            } while(this._cursor.right === save);
-        }
-        else {
-            // get the next node from the subtree
-            this._ancestors.push(this._cursor);
-            this._minNode(this._cursor.right);
-        }
-    }
-    return this._cursor !== null ? this._cursor.data : null;
-};
-
-// if null-iterator, returns last node
-// otherwise, returns previous node
-Iterator.prototype.prev = function() {
-    if(this._cursor === null) {
-        var root = this._tree._root;
-        if(root !== null) {
-            this._maxNode(root);
-        }
-    }
-    else {
-        if(this._cursor.left === null) {
-            var save;
-            do {
-                save = this._cursor;
-                if(this._ancestors.length) {
-                    this._cursor = this._ancestors.pop();
-                }
-                else {
-                    this._cursor = null;
-                    break;
-                }
-            } while(this._cursor.left === save);
-        }
-        else {
-            this._ancestors.push(this._cursor);
-            this._maxNode(this._cursor.left);
-        }
-    }
-    return this._cursor !== null ? this._cursor.data : null;
-};
-
-Iterator.prototype._minNode = function(start) {
-    while(start.left !== null) {
-        this._ancestors.push(start);
-        start = start.left;
-    }
-    this._cursor = start;
-};
-
-Iterator.prototype._maxNode = function(start) {
-    while(start.right !== null) {
-        this._ancestors.push(start);
-        start = start.right;
-    }
-    this._cursor = start;
-};
-
-module.exports = TreeBase;
-
-};
-require.m['__main__'] = function(module, exports) {
-
-var TreeBase = require('./treebase');
-
-function Node(data) {
-    this.data = data;
-    this.left = null;
-    this.right = null;
-    this.red = true;
-}
-
-Node.prototype.get_child = function(dir) {
-    return dir ? this.right : this.left;
-};
-
-Node.prototype.set_child = function(dir, val) {
-    if(dir) {
-        this.right = val;
-    }
-    else {
-        this.left = val;
-    }
-};
-
-function RBTree(comparator) {
-    this._root = null;
-    this._comparator = comparator;
-    this.size = 0;
-}
-
-RBTree.prototype = new TreeBase();
-
-// returns true if inserted, false if duplicate
-RBTree.prototype.insert = function(data) {
-    var ret = false;
-
-    if(this._root === null) {
-        // empty tree
-        this._root = new Node(data);
-        ret = true;
-        this.size++;
-    }
-    else {
-        var head = new Node(undefined); // fake tree root
-
-        var dir = 0;
-        var last = 0;
-
-        // setup
-        var gp = null; // grandparent
-        var ggp = head; // grand-grand-parent
-        var p = null; // parent
-        var node = this._root;
-        ggp.right = this._root;
-
-        // search down
-        while(true) {
-            if(node === null) {
-                // insert new node at the bottom
-                node = new Node(data);
-                p.set_child(dir, node);
-                ret = true;
-                this.size++;
-            }
-            else if(is_red(node.left) && is_red(node.right)) {
-                // color flip
-                node.red = true;
-                node.left.red = false;
-                node.right.red = false;
-            }
-
-            // fix red violation
-            if(is_red(node) && is_red(p)) {
-                var dir2 = ggp.right === gp;
-
-                if(node === p.get_child(last)) {
-                    ggp.set_child(dir2, single_rotate(gp, !last));
-                }
-                else {
-                    ggp.set_child(dir2, double_rotate(gp, !last));
-                }
-            }
-
-            var cmp = this._comparator(node.data, data);
-
-            // stop if found
-            if(cmp === 0) {
-                break;
-            }
-
-            last = dir;
-            dir = cmp < 0;
-
-            // update helpers
-            if(gp !== null) {
-                ggp = gp;
-            }
-            gp = p;
-            p = node;
-            node = node.get_child(dir);
-        }
-
-        // update root
-        this._root = head.right;
-    }
-
-    // make root black
-    this._root.red = false;
-
-    return ret;
-};
-
-// returns true if removed, false if not found
-RBTree.prototype.remove = function(data) {
-    if(this._root === null) {
-        return false;
-    }
-
-    var head = new Node(undefined); // fake tree root
-    var node = head;
-    node.right = this._root;
-    var p = null; // parent
-    var gp = null; // grand parent
-    var found = null; // found item
-    var dir = 1;
-
-    while(node.get_child(dir) !== null) {
-        var last = dir;
-
-        // update helpers
-        gp = p;
-        p = node;
-        node = node.get_child(dir);
-
-        var cmp = this._comparator(data, node.data);
-
-        dir = cmp > 0;
-
-        // save found node
-        if(cmp === 0) {
-            found = node;
-        }
-
-        // push the red node down
-        if(!is_red(node) && !is_red(node.get_child(dir))) {
-            if(is_red(node.get_child(!dir))) {
-                var sr = single_rotate(node, dir);
-                p.set_child(last, sr);
-                p = sr;
-            }
-            else if(!is_red(node.get_child(!dir))) {
-                var sibling = p.get_child(!last);
-                if(sibling !== null) {
-                    if(!is_red(sibling.get_child(!last)) && !is_red(sibling.get_child(last))) {
-                        // color flip
-                        p.red = false;
-                        sibling.red = true;
-                        node.red = true;
-                    }
-                    else {
-                        var dir2 = gp.right === p;
-
-                        if(is_red(sibling.get_child(last))) {
-                            gp.set_child(dir2, double_rotate(p, last));
-                        }
-                        else if(is_red(sibling.get_child(!last))) {
-                            gp.set_child(dir2, single_rotate(p, last));
-                        }
-
-                        // ensure correct coloring
-                        var gpc = gp.get_child(dir2);
-                        gpc.red = true;
-                        node.red = true;
-                        gpc.left.red = false;
-                        gpc.right.red = false;
-                    }
-                }
-            }
-        }
-    }
-
-    // replace and remove if found
-    if(found !== null) {
-        found.data = node.data;
-        p.set_child(p.right === node, node.get_child(node.left === null));
-        this.size--;
-    }
-
-    // update root and make it black
-    this._root = head.right;
-    if(this._root !== null) {
-        this._root.red = false;
-    }
-
-    return found !== null;
-};
-
-function is_red(node) {
-    return node !== null && node.red;
-}
-
-function single_rotate(root, dir) {
-    var save = root.get_child(!dir);
-
-    root.set_child(!dir, save.get_child(dir));
-    save.set_child(dir, root);
-
-    root.red = true;
-    save.red = false;
-
-    return save;
-}
-
-function double_rotate(root, dir) {
-    root.set_child(!dir, single_rotate(root.get_child(!dir), !dir));
-    return single_rotate(root, dir);
-}
-
-module.exports = RBTree;
-};
-return require('__main__');
-})(window);
-
 var cola;
 (function (cola) {
     var packingOptions = {
@@ -580,11 +83,11 @@ var cola;
                 center.y /= g.array.length;
                 // calculate current top left corner:
                 var corner = { x: center.x - g.width / 2, y: center.y - g.height / 2 };
-                var offset = { x: g.x - corner.x, y: g.y - corner.y };
+                var offset = { x: g.x - corner.x + svg_width / 2 - real_width / 2, y: g.y - corner.y + svg_height / 2 - real_height / 2 };
                 // put nodes:
                 g.array.forEach(function (node) {
-                    node.x = node.x + offset.x + svg_width / 2 - real_width / 2;
-                    node.y = node.y + offset.y + svg_height / 2 - real_height / 2;
+                    node.x += offset.x;
+                    node.y += offset.y;
                 });
             });
         }
@@ -593,9 +96,7 @@ var cola;
         function apply(data, desired_ratio) {
             var curr_best_f = Number.POSITIVE_INFINITY;
             var curr_best = 0;
-            data.sort(function (a, b) {
-                return b.height - a.height;
-            });
+            data.sort(function (a, b) { return b.height - a.height; });
             min_width = data.reduce(function (a, b) {
                 return a.width < b.width ? a.width : b.width;
             });
@@ -691,9 +192,7 @@ var cola;
         ;
         function get_entire_width(data) {
             var width = 0;
-            data.forEach(function (d) {
-                return width += d.width + packingOptions.PADDING;
-            });
+            data.forEach(function (d) { return width += d.width + packingOptions.PADDING; });
             return width;
         }
         function get_real_ratio() {
@@ -701,8 +200,10 @@ var cola;
         }
     }
     cola.applyPacking = applyPacking;
-    // seraration of disconnected graphs
-    // returns an array of {}
+    /**
+     * connected components of graph
+     * returns an array of {}
+     */
     function separateGraphs(nodes, links) {
         var marks = {};
         var ways = {};
@@ -787,7 +288,9 @@ var cola;
                 this.equality = equality;
             }
             Constraint.prototype.slack = function () {
-                return this.unsatisfiable ? Number.MAX_VALUE : this.right.scale * this.right.position() - this.gap - this.left.scale * this.left.position();
+                return this.unsatisfiable ? Number.MAX_VALUE
+                    : this.right.scale * this.right.position() - this.gap
+                        - this.left.scale * this.left.position();
             };
             return Constraint;
         })();
@@ -883,8 +386,7 @@ var cola;
                 return m;
             };
             Block.prototype.findMinLMBetween = function (lv, rv) {
-                this.compute_lm(lv, null, function () {
-                });
+                this.compute_lm(lv, null, function () { });
                 var m = null;
                 this.findPath(lv, null, rv, function (c, next) {
                     if (!c.equality && c.right === next && (m === null || c.lm < m.lm))
@@ -1069,10 +571,7 @@ var cola;
                                     c.toString = () => c.left + "+" + c.gap + "<=" + c.right + " slack=" + c.slack() + " active=" + c.active;
                     DEBUG */
                 });
-                this.inactive = cs.map(function (c) {
-                    c.active = false;
-                    return c;
-                });
+                this.inactive = cs.map(function (c) { c.active = false; return c; });
                 this.bs = null;
             }
             Solver.prototype.cost = function () {
@@ -1081,10 +580,7 @@ var cola;
             // set starting positions without changing desired positions.
             // Note: it throws away any previous block structure.
             Solver.prototype.setStartingPositions = function (ps) {
-                this.inactive = this.cs.map(function (c) {
-                    c.active = false;
-                    return c;
-                });
+                this.inactive = this.cs.map(function (c) { c.active = false; return c; });
                 this.bs = new Blocks(this.vs);
                 this.bs.forEach(function (b, i) { return b.posn = ps[i]; });
             };
@@ -1130,7 +626,8 @@ var cola;
                             break;
                     }
                 }
-                if (deletePoint !== n && (minSlack < Solver.ZERO_UPPERBOUND && !v.active || v.equality)) {
+                if (deletePoint !== n &&
+                    (minSlack < Solver.ZERO_UPPERBOUND && !v.active || v.equality)) {
                     l[deletePoint] = l[n - 1];
                     l.length = n - 1;
                 }
@@ -1215,20 +712,461 @@ var cola;
         vpsc.Solver = Solver;
     })(vpsc = cola.vpsc || (cola.vpsc = {}));
 })(cola || (cola = {}));
-var __extends = this.__extends || function (d, b) {
+var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
-    __.prototype = b.prototype;
-    d.prototype = new __();
+    d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
+var cola;
+(function (cola) {
+    var vpsc;
+    (function (vpsc) {
+        //Based on js_es:
+        //
+        //https://github.com/vadimg/js_bintrees
+        //
+        //Copyright (C) 2011 by Vadim Graboys
+        //
+        //Permission is hereby granted, free of charge, to any person obtaining a copy
+        //of this software and associated documentation files (the "Software"), to deal
+        //in the Software without restriction, including without limitation the rights
+        //to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+        //copies of the Software, and to permit persons to whom the Software is
+        //furnished to do so, subject to the following conditions:
+        //
+        //The above copyright notice and this permission notice shall be included in
+        //all copies or substantial portions of the Software.
+        //
+        //THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+        //IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+        //FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+        //AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+        //LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+        //OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+        //THE SOFTWARE.
+        var TreeBase = (function () {
+            function TreeBase() {
+                // returns iterator to node if found, null otherwise
+                this.findIter = function (data) {
+                    var res = this._root;
+                    var iter = this.iterator();
+                    while (res !== null) {
+                        var c = this._comparator(data, res.data);
+                        if (c === 0) {
+                            iter._cursor = res;
+                            return iter;
+                        }
+                        else {
+                            iter._ancestors.push(res);
+                            res = res.get_child(c > 0);
+                        }
+                    }
+                    return null;
+                };
+            }
+            // removes all nodes from the tree
+            TreeBase.prototype.clear = function () {
+                this._root = null;
+                this.size = 0;
+            };
+            ;
+            // returns node data if found, null otherwise
+            TreeBase.prototype.find = function (data) {
+                var res = this._root;
+                while (res !== null) {
+                    var c = this._comparator(data, res.data);
+                    if (c === 0) {
+                        return res.data;
+                    }
+                    else {
+                        res = res.get_child(c > 0);
+                    }
+                }
+                return null;
+            };
+            ;
+            // Returns an interator to the tree node immediately before (or at) the element
+            TreeBase.prototype.lowerBound = function (data) {
+                return this._bound(data, this._comparator);
+            };
+            ;
+            // Returns an interator to the tree node immediately after (or at) the element
+            TreeBase.prototype.upperBound = function (data) {
+                var cmp = this._comparator;
+                function reverse_cmp(a, b) {
+                    return cmp(b, a);
+                }
+                return this._bound(data, reverse_cmp);
+            };
+            ;
+            // returns null if tree is empty
+            TreeBase.prototype.min = function () {
+                var res = this._root;
+                if (res === null) {
+                    return null;
+                }
+                while (res.left !== null) {
+                    res = res.left;
+                }
+                return res.data;
+            };
+            ;
+            // returns null if tree is empty
+            TreeBase.prototype.max = function () {
+                var res = this._root;
+                if (res === null) {
+                    return null;
+                }
+                while (res.right !== null) {
+                    res = res.right;
+                }
+                return res.data;
+            };
+            ;
+            // returns a null iterator
+            // call next() or prev() to point to an element
+            TreeBase.prototype.iterator = function () {
+                return new Iterator(this);
+            };
+            ;
+            // calls cb on each node's data, in order
+            TreeBase.prototype.each = function (cb) {
+                var it = this.iterator(), data;
+                while ((data = it.next()) !== null) {
+                    cb(data);
+                }
+            };
+            ;
+            // calls cb on each node's data, in reverse order
+            TreeBase.prototype.reach = function (cb) {
+                var it = this.iterator(), data;
+                while ((data = it.prev()) !== null) {
+                    cb(data);
+                }
+            };
+            ;
+            // used for lowerBound and upperBound
+            TreeBase.prototype._bound = function (data, cmp) {
+                var cur = this._root;
+                var iter = this.iterator();
+                while (cur !== null) {
+                    var c = this._comparator(data, cur.data);
+                    if (c === 0) {
+                        iter._cursor = cur;
+                        return iter;
+                    }
+                    iter._ancestors.push(cur);
+                    cur = cur.get_child(c > 0);
+                }
+                for (var i = iter._ancestors.length - 1; i >= 0; --i) {
+                    cur = iter._ancestors[i];
+                    if (cmp(data, cur.data) > 0) {
+                        iter._cursor = cur;
+                        iter._ancestors.length = i;
+                        return iter;
+                    }
+                }
+                iter._ancestors.length = 0;
+                return iter;
+            };
+            ;
+            return TreeBase;
+        })();
+        vpsc.TreeBase = TreeBase;
+        var Iterator = (function () {
+            function Iterator(tree) {
+                this._tree = tree;
+                this._ancestors = [];
+                this._cursor = null;
+            }
+            Iterator.prototype.data = function () {
+                return this._cursor !== null ? this._cursor.data : null;
+            };
+            ;
+            // if null-iterator, returns first node
+            // otherwise, returns next node
+            Iterator.prototype.next = function () {
+                if (this._cursor === null) {
+                    var root = this._tree._root;
+                    if (root !== null) {
+                        this._minNode(root);
+                    }
+                }
+                else {
+                    if (this._cursor.right === null) {
+                        // no greater node in subtree, go up to parent
+                        // if coming from a right child, continue up the stack
+                        var save;
+                        do {
+                            save = this._cursor;
+                            if (this._ancestors.length) {
+                                this._cursor = this._ancestors.pop();
+                            }
+                            else {
+                                this._cursor = null;
+                                break;
+                            }
+                        } while (this._cursor.right === save);
+                    }
+                    else {
+                        // get the next node from the subtree
+                        this._ancestors.push(this._cursor);
+                        this._minNode(this._cursor.right);
+                    }
+                }
+                return this._cursor !== null ? this._cursor.data : null;
+            };
+            ;
+            // if null-iterator, returns last node
+            // otherwise, returns previous node
+            Iterator.prototype.prev = function () {
+                if (this._cursor === null) {
+                    var root = this._tree._root;
+                    if (root !== null) {
+                        this._maxNode(root);
+                    }
+                }
+                else {
+                    if (this._cursor.left === null) {
+                        var save;
+                        do {
+                            save = this._cursor;
+                            if (this._ancestors.length) {
+                                this._cursor = this._ancestors.pop();
+                            }
+                            else {
+                                this._cursor = null;
+                                break;
+                            }
+                        } while (this._cursor.left === save);
+                    }
+                    else {
+                        this._ancestors.push(this._cursor);
+                        this._maxNode(this._cursor.left);
+                    }
+                }
+                return this._cursor !== null ? this._cursor.data : null;
+            };
+            ;
+            Iterator.prototype._minNode = function (start) {
+                while (start.left !== null) {
+                    this._ancestors.push(start);
+                    start = start.left;
+                }
+                this._cursor = start;
+            };
+            ;
+            Iterator.prototype._maxNode = function (start) {
+                while (start.right !== null) {
+                    this._ancestors.push(start);
+                    start = start.right;
+                }
+                this._cursor = start;
+            };
+            ;
+            return Iterator;
+        })();
+        vpsc.Iterator = Iterator;
+        var Node = (function () {
+            function Node(data) {
+                this.data = data;
+                this.left = null;
+                this.right = null;
+                this.red = true;
+            }
+            Node.prototype.get_child = function (dir) {
+                return dir ? this.right : this.left;
+            };
+            ;
+            Node.prototype.set_child = function (dir, val) {
+                if (dir) {
+                    this.right = val;
+                }
+                else {
+                    this.left = val;
+                }
+            };
+            ;
+            return Node;
+        })();
+        var RBTree = (function (_super) {
+            __extends(RBTree, _super);
+            function RBTree(comparator) {
+                _super.call(this);
+                this._root = null;
+                this._comparator = comparator;
+                this.size = 0;
+            }
+            // returns true if inserted, false if duplicate
+            RBTree.prototype.insert = function (data) {
+                var ret = false;
+                if (this._root === null) {
+                    // empty tree
+                    this._root = new Node(data);
+                    ret = true;
+                    this.size++;
+                }
+                else {
+                    var head = new Node(undefined); // fake tree root
+                    var dir = false;
+                    var last = false;
+                    // setup
+                    var gp = null; // grandparent
+                    var ggp = head; // grand-grand-parent
+                    var p = null; // parent
+                    var node = this._root;
+                    ggp.right = this._root;
+                    // search down
+                    while (true) {
+                        if (node === null) {
+                            // insert new node at the bottom
+                            node = new Node(data);
+                            p.set_child(dir, node);
+                            ret = true;
+                            this.size++;
+                        }
+                        else if (RBTree.is_red(node.left) && RBTree.is_red(node.right)) {
+                            // color flip
+                            node.red = true;
+                            node.left.red = false;
+                            node.right.red = false;
+                        }
+                        // fix red violation
+                        if (RBTree.is_red(node) && RBTree.is_red(p)) {
+                            var dir2 = ggp.right === gp;
+                            if (node === p.get_child(last)) {
+                                ggp.set_child(dir2, RBTree.single_rotate(gp, !last));
+                            }
+                            else {
+                                ggp.set_child(dir2, RBTree.double_rotate(gp, !last));
+                            }
+                        }
+                        var cmp = this._comparator(node.data, data);
+                        // stop if found
+                        if (cmp === 0) {
+                            break;
+                        }
+                        last = dir;
+                        dir = cmp < 0;
+                        // update helpers
+                        if (gp !== null) {
+                            ggp = gp;
+                        }
+                        gp = p;
+                        p = node;
+                        node = node.get_child(dir);
+                    }
+                    // update root
+                    this._root = head.right;
+                }
+                // make root black
+                this._root.red = false;
+                return ret;
+            };
+            ;
+            // returns true if removed, false if not found
+            RBTree.prototype.remove = function (data) {
+                if (this._root === null) {
+                    return false;
+                }
+                var head = new Node(undefined); // fake tree root
+                var node = head;
+                node.right = this._root;
+                var p = null; // parent
+                var gp = null; // grand parent
+                var found = null; // found item
+                var dir = true;
+                while (node.get_child(dir) !== null) {
+                    var last = dir;
+                    // update helpers
+                    gp = p;
+                    p = node;
+                    node = node.get_child(dir);
+                    var cmp = this._comparator(data, node.data);
+                    dir = cmp > 0;
+                    // save found node
+                    if (cmp === 0) {
+                        found = node;
+                    }
+                    // push the red node down
+                    if (!RBTree.is_red(node) && !RBTree.is_red(node.get_child(dir))) {
+                        if (RBTree.is_red(node.get_child(!dir))) {
+                            var sr = RBTree.single_rotate(node, dir);
+                            p.set_child(last, sr);
+                            p = sr;
+                        }
+                        else if (!RBTree.is_red(node.get_child(!dir))) {
+                            var sibling = p.get_child(!last);
+                            if (sibling !== null) {
+                                if (!RBTree.is_red(sibling.get_child(!last)) && !RBTree.is_red(sibling.get_child(last))) {
+                                    // color flip
+                                    p.red = false;
+                                    sibling.red = true;
+                                    node.red = true;
+                                }
+                                else {
+                                    var dir2 = gp.right === p;
+                                    if (RBTree.is_red(sibling.get_child(last))) {
+                                        gp.set_child(dir2, RBTree.double_rotate(p, last));
+                                    }
+                                    else if (RBTree.is_red(sibling.get_child(!last))) {
+                                        gp.set_child(dir2, RBTree.single_rotate(p, last));
+                                    }
+                                    // ensure correct coloring
+                                    var gpc = gp.get_child(dir2);
+                                    gpc.red = true;
+                                    node.red = true;
+                                    gpc.left.red = false;
+                                    gpc.right.red = false;
+                                }
+                            }
+                        }
+                    }
+                }
+                // replace and remove if found
+                if (found !== null) {
+                    found.data = node.data;
+                    p.set_child(p.right === node, node.get_child(node.left === null));
+                    this.size--;
+                }
+                // update root and make it black
+                this._root = head.right;
+                if (this._root !== null) {
+                    this._root.red = false;
+                }
+                return found !== null;
+            };
+            ;
+            RBTree.is_red = function (node) {
+                return node !== null && node.red;
+            };
+            RBTree.single_rotate = function (root, dir) {
+                var save = root.get_child(!dir);
+                root.set_child(!dir, save.get_child(dir));
+                save.set_child(dir, root);
+                root.red = true;
+                save.red = false;
+                return save;
+            };
+            RBTree.double_rotate = function (root, dir) {
+                root.set_child(!dir, RBTree.single_rotate(root.get_child(!dir), !dir));
+                return RBTree.single_rotate(root, dir);
+            };
+            return RBTree;
+        })(TreeBase);
+        vpsc.RBTree = RBTree;
+    })(vpsc = cola.vpsc || (cola.vpsc = {}));
+})(cola || (cola = {}));
 ///<reference path="vpsc.ts"/>
-///<reference path="rbtree.d.ts"/>
+///<reference path="rbtree.ts"/>
 var cola;
 (function (cola) {
     var vpsc;
     (function (vpsc) {
         function computeGroupBounds(g) {
-            g.bounds = typeof g.leaves !== "undefined" ? g.leaves.reduce(function (r, c) { return c.bounds.union(r); }, Rectangle.empty()) : Rectangle.empty();
+            g.bounds = typeof g.leaves !== "undefined" ?
+                g.leaves.reduce(function (r, c) { return c.bounds.union(r); }, Rectangle.empty()) :
+                Rectangle.empty();
             if (typeof g.groups !== "undefined")
                 g.bounds = g.groups.reduce(function (r, c) { return computeGroupBounds(c).union(r); }, g.bounds);
             g.bounds = g.bounds.inflate(g.padding);
@@ -1242,15 +1180,9 @@ var cola;
                 this.y = y;
                 this.Y = Y;
             }
-            Rectangle.empty = function () {
-                return new Rectangle(Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY);
-            };
-            Rectangle.prototype.cx = function () {
-                return (this.x + this.X) / 2;
-            };
-            Rectangle.prototype.cy = function () {
-                return (this.y + this.Y) / 2;
-            };
+            Rectangle.empty = function () { return new Rectangle(Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY); };
+            Rectangle.prototype.cx = function () { return (this.x + this.X) / 2; };
+            Rectangle.prototype.cy = function () { return (this.y + this.Y) / 2; };
             Rectangle.prototype.overlapX = function (r) {
                 var ux = this.cx(), vx = r.cx();
                 if (ux <= vx && r.x < this.X)
@@ -1296,7 +1228,10 @@ var cola;
              * @return any intersection points found
              */
             Rectangle.prototype.lineIntersections = function (x1, y1, x2, y2) {
-                var sides = [[this.x, this.y, this.X, this.y], [this.X, this.y, this.X, this.Y], [this.X, this.Y, this.x, this.Y], [this.x, this.Y, this.x, this.y]];
+                var sides = [[this.x, this.y, this.X, this.y],
+                    [this.X, this.y, this.X, this.Y],
+                    [this.X, this.Y, this.x, this.Y],
+                    [this.x, this.Y, this.x, this.y]];
                 var intersections = [];
                 for (var i = 0; i < 4; ++i) {
                     var r = Rectangle.lineIntersection(x1, y1, x2, y2, sides[i][0], sides[i][1], sides[i][2], sides[i][3]);
@@ -1323,8 +1258,7 @@ var cola;
                     { x: this.X, y: this.y },
                     { x: this.X, y: this.Y },
                     { x: this.x, y: this.Y },
-                    { x: this.x, y: this.y }
-                ];
+                    { x: this.x, y: this.y }];
             };
             Rectangle.lineIntersection = function (x1, y1, x2, y2, x3, y3, x4, y4) {
                 var dx12 = x2 - x1, dx34 = x4 - x3, dy12 = y2 - y1, dy34 = y4 - y3, denominator = dy34 * dx12 - dx34 * dy12;
@@ -1345,17 +1279,13 @@ var cola;
             return Rectangle;
         })();
         vpsc.Rectangle = Rectangle;
-        function makeEdgeBetween(link, source, target, ah) {
-            var si = source.rayIntersection(target.cx(), target.cy());
-            if (!si)
-                si = { x: source.cx(), y: source.cy() };
-            var ti = target.rayIntersection(source.cx(), source.cy());
-            if (!ti)
-                ti = { x: target.cx(), y: target.cy() };
-            var dx = ti.x - si.x, dy = ti.y - si.y, l = Math.sqrt(dx * dx + dy * dy), al = l - ah;
-            link.sourceIntersection = si;
-            link.targetIntersection = ti;
-            link.arrowStart = { x: si.x + al * dx / l, y: si.y + al * dy / l };
+        function makeEdgeBetween(source, target, ah) {
+            var si = source.rayIntersection(target.cx(), target.cy()) || { x: source.cx(), y: source.cy() }, ti = target.rayIntersection(source.cx(), source.cy()) || { x: target.cx(), y: target.cy() }, dx = ti.x - si.x, dy = ti.y - si.y, l = Math.sqrt(dx * dx + dy * dy), al = l - ah;
+            return {
+                sourceIntersection: si,
+                targetIntersection: ti,
+                arrowStart: { x: si.x + al * dx / l, y: si.y + al * dy / l }
+            };
         }
         vpsc.makeEdgeBetween = makeEdgeBetween;
         function makeEdgeTo(s, target, ah) {
@@ -1395,10 +1325,14 @@ var cola;
                 // open must come before close
                 return -1;
             }
+            if (b.isOpen) {
+                // open must come before close
+                return 1;
+            }
             return 0;
         }
         function makeRBTree() {
-            return new RBTree(function (a, b) { return a.pos - b.pos; });
+            return new vpsc.RBTree(function (a, b) { return a.pos - b.pos; });
         }
         var xRect = {
             getCentre: function (r) { return r.cx(); },
@@ -1418,10 +1352,8 @@ var cola;
         };
         function generateGroupConstraints(root, f, minSep, isContained) {
             if (isContained === void 0) { isContained = false; }
-            var padding = root.padding, gn = typeof root.groups !== 'undefined' ? root.groups.length : 0, ln = typeof root.leaves !== 'undefined' ? root.leaves.length : 0, childConstraints = !gn ? [] : root.groups.reduce(function (ccs, g) { return ccs.concat(generateGroupConstraints(g, f, minSep, true)); }, []), n = (isContained ? 2 : 0) + ln + gn, vs = new Array(n), rs = new Array(n), i = 0, add = function (r, v) {
-                rs[i] = r;
-                vs[i++] = v;
-            };
+            var padding = root.padding, gn = typeof root.groups !== 'undefined' ? root.groups.length : 0, ln = typeof root.leaves !== 'undefined' ? root.leaves.length : 0, childConstraints = !gn ? []
+                : root.groups.reduce(function (ccs, g) { return ccs.concat(generateGroupConstraints(g, f, minSep, true)); }, []), n = (isContained ? 2 : 0) + ln + gn, vs = new Array(n), rs = new Array(n), i = 0, add = function (r, v) { rs[i] = r; vs[i++] = v; };
             if (isContained) {
                 // if this group is contained by another, then we add two dummy vars and rectangles for the borders
                 var b = root.bounds, c = f.getCentre(b), s = f.getSize(b) / 2, open = f.getOpen(b), close = f.getClose(b), min = c - s + padding / 2, max = c + s - padding / 2;
@@ -1439,19 +1371,12 @@ var cola;
                 });
             var cs = generateConstraints(rs, vs, f, minSep);
             if (gn) {
-                vs.forEach(function (v) {
-                    v.cOut = [], v.cIn = [];
-                });
-                cs.forEach(function (c) {
-                    c.left.cOut.push(c), c.right.cIn.push(c);
-                });
+                vs.forEach(function (v) { v.cOut = [], v.cIn = []; });
+                cs.forEach(function (c) { c.left.cOut.push(c), c.right.cIn.push(c); });
                 root.groups.forEach(function (g) {
                     var gapAdjustment = (g.padding - f.getSize(g.bounds)) / 2;
                     g.minVar.cIn.forEach(function (c) { return c.gap += gapAdjustment; });
-                    g.minVar.cOut.forEach(function (c) {
-                        c.left = g.maxVar;
-                        c.gap += gapAdjustment;
-                    });
+                    g.minVar.cOut.forEach(function (c) { c.left = g.maxVar; c.gap += gapAdjustment; });
                 });
             }
             return childConstraints.concat(cs);
@@ -1549,9 +1474,7 @@ var cola;
             var solver = new vpsc.Solver(vs, cs);
             solver.solve();
             vs.forEach(function (v, i) { return rs[i].setXCentre(v.position()); });
-            vs = rs.map(function (r) {
-                return new vpsc.Variable(r.cy());
-            });
+            vs = rs.map(function (r) { return new vpsc.Variable(r.cy()); });
             cs = vpsc.generateYConstraints(rs, vs);
             solver = new vpsc.Solver(vs, cs);
             solver.solve();
@@ -1631,14 +1554,20 @@ var cola;
             Projection.prototype.createConstraints = function (constraints) {
                 var _this = this;
                 var isSep = function (c) { return typeof c.type === 'undefined' || c.type === 'separation'; };
-                this.xConstraints = constraints.filter(function (c) { return c.axis === "x" && isSep(c); }).map(function (c) { return _this.createSeparation(c); });
-                this.yConstraints = constraints.filter(function (c) { return c.axis === "y" && isSep(c); }).map(function (c) { return _this.createSeparation(c); });
-                constraints.filter(function (c) { return c.type === 'alignment'; }).forEach(function (c) { return _this.createAlignment(c); });
+                this.xConstraints = constraints
+                    .filter(function (c) { return c.axis === "x" && isSep(c); })
+                    .map(function (c) { return _this.createSeparation(c); });
+                this.yConstraints = constraints
+                    .filter(function (c) { return c.axis === "y" && isSep(c); })
+                    .map(function (c) { return _this.createSeparation(c); });
+                constraints
+                    .filter(function (c) { return c.type === 'alignment'; })
+                    .forEach(function (c) { return _this.createAlignment(c); });
             };
             Projection.prototype.setupVariablesAndBounds = function (x0, y0, desired, getDesired) {
                 this.nodes.forEach(function (v, i) {
                     if (v.fixed) {
-                        v.variable.weight = 1000;
+                        v.variable.weight = v.fixedWeight ? v.fixedWeight : 1000;
                         desired[i] = getDesired(v);
                     }
                     else {
@@ -1689,6 +1618,7 @@ var cola;
                 this.nodes.forEach(updateNodeBounds);
                 if (this.rootGroup && this.avoidOverlaps) {
                     this.groups.forEach(updateGroupBounds);
+                    computeGroupBounds(this.rootGroup);
                 }
             };
             Projection.prototype.solve = function (vs, cs, starting, desired) {
@@ -1787,7 +1717,7 @@ var cola;
                     while (H.length > 1) {
                         // test if  P[i] is left of the line at the stack top
                         if (isLeft(H[H.length - 2], H[H.length - 1], P[i]) > 0)
-                            break;
+                            break; // P[i] is a new hull  vertex
                         else
                             H.length -= 1; // pop top point off  stack
                     }
@@ -1806,7 +1736,7 @@ var cola;
                     while (H.length > bot) {
                         // test if  P[i] is left of the line at the stack top
                         if (isLeft(H[H.length - 2], H[H.length - 1], P[i]) > 0)
-                            break;
+                            break; // P[i] is a new hull  vertex
                         else
                             H.length -= 1; // pop top point off  stack
                     }
@@ -2123,16 +2053,20 @@ var cola;
                     var w1w2v2 = isLeft(w1, w2, v2);
                     var w2v1v2 = isLeft(w2, v1, v2);
                     var w2v2v3 = isLeft(w2, v2, v3);
-                    if (v1v2w2 >= 0 && v2w1w2 >= 0 && v2w2w3 < 0 && w1w2v2 >= 0 && w2v1v2 >= 0 && w2v2v3 < 0) {
+                    if (v1v2w2 >= 0 && v2w1w2 >= 0 && v2w2w3 < 0
+                        && w1w2v2 >= 0 && w2v1v2 >= 0 && w2v2v3 < 0) {
                         bt.ll = new BiTangent(i, j);
                     }
-                    else if (v1v2w2 <= 0 && v2w1w2 <= 0 && v2w2w3 > 0 && w1w2v2 <= 0 && w2v1v2 <= 0 && w2v2v3 > 0) {
+                    else if (v1v2w2 <= 0 && v2w1w2 <= 0 && v2w2w3 > 0
+                        && w1w2v2 <= 0 && w2v1v2 <= 0 && w2v2v3 > 0) {
                         bt.rr = new BiTangent(i, j);
                     }
-                    else if (v1v2w2 <= 0 && v2w1w2 > 0 && v2w2w3 <= 0 && w1w2v2 >= 0 && w2v1v2 < 0 && w2v2v3 >= 0) {
+                    else if (v1v2w2 <= 0 && v2w1w2 > 0 && v2w2w3 <= 0
+                        && w1w2v2 >= 0 && w2v1v2 < 0 && w2v2v3 >= 0) {
                         bt.rl = new BiTangent(i, j);
                     }
-                    else if (v1v2w2 >= 0 && v2w1w2 < 0 && v2w2w3 >= 0 && w1w2v2 <= 0 && w2v1v2 > 0 && w2v2v3 <= 0) {
+                    else if (v1v2w2 >= 0 && v2w1w2 < 0 && v2w2w3 >= 0
+                        && w1w2v2 <= 0 && w2v1v2 > 0 && w2v2v3 <= 0) {
                         bt.lr = new BiTangent(i, j);
                     }
                 }
@@ -2184,8 +2118,9 @@ var cola;
          * @param x required position for node
          */
         Locks.prototype.add = function (id, x) {
-            if (isNaN(x[0]) || isNaN(x[1]))
-                debugger;
+            /* DEBUG
+                        if (isNaN(x[0]) || isNaN(x[1])) debugger;
+            DEBUG */
             this.locks[id] = x;
         };
         /**
@@ -2217,6 +2152,11 @@ var cola;
     cola.Locks = Locks;
     /**
      * Uses a gradient descent approach to reduce a stress or p-stress goal function over a graph with specified ideal edge lengths or a square matrix of dissimilarities.
+     * The standard stress function over a graph nodes with position vectors x,y,z is (mathematica input):
+     *   stress[x_,y_,z_,D_,w_]:=Sum[w[[i,j]] (length[x[[i]],y[[i]],z[[i]],x[[j]],y[[j]],z[[j]]]-d[[i,j]])^2,{i,Length[x]-1},{j,i+1,Length[x]}]
+     * where: D is a square matrix of ideal separations between nodes, w is matrix of weights for those separations
+     *        length[x1_, y1_, z1_, x2_, y2_, z2_] = Sqrt[(x1 - x2)^2 + (y1 - y2)^2 + (z1 - z2)^2]
+     * below, we use wij = 1/(Dij^2)
      *
      * @class Descent
      */
@@ -2359,13 +2299,14 @@ var cola;
                         weight = 1;
                     }
                     var D2 = D * D;
-                    var gs = weight * (l - D) / (D2 * l);
-                    var hs = -weight / (D2 * l * l * l);
+                    var gs = 2 * weight * (l - D) / (D2 * l);
+                    var l3 = l * l * l;
+                    var hs = 2 * -weight / (D2 * l3);
                     if (!isFinite(gs))
                         console.log(gs);
                     for (i = 0; i < this.k; ++i) {
                         this.g[i][u] += d[i] * gs;
-                        Huu[i] -= this.H[i][u][v] = hs * (D * (d2[i] - sd2) + l * sd2);
+                        Huu[i] -= this.H[i][u][v] = hs * (l3 + D * (d2[i] - sd2) + l * sd2);
                     }
                 }
                 for (i = 0; i < this.k; ++i)
@@ -2377,6 +2318,7 @@ var cola;
             var w = this.snapStrength;
             var k = w / (r * r);
             var numNodes = this.numGridSnapNodes;
+            //var numNodes = n;
             for (var u = 0; u < numNodes; ++u) {
                 for (i = 0; i < this.k; ++i) {
                     var xiu = this.x[i][u];
@@ -2384,7 +2326,8 @@ var cola;
                     var f = m % 1;
                     var q = m - f;
                     var a = Math.abs(f);
-                    var dx = (a <= 0.5) ? xiu - q * g : (xiu > 0) ? xiu - (q + 1) * g : xiu - (q - 1) * g;
+                    var dx = (a <= 0.5) ? xiu - q * g :
+                        (xiu > 0) ? xiu - (q + 1) * g : xiu - (q - 1) * g;
                     if (-r < dx && dx <= r) {
                         if (this.scaleSnapByMaxH) {
                             this.g[i][u] += maxH * k * dx;
@@ -2431,14 +2374,14 @@ var cola;
         // returns the scalar multiplier to apply to d to get the optimal step
         Descent.prototype.computeStepSize = function (d) {
             var numerator = 0, denominator = 0;
-            for (var i = 0; i < 2; ++i) {
+            for (var i = 0; i < this.k; ++i) {
                 numerator += Descent.dotProd(this.g[i], d[i]);
                 Descent.rightMultiply(this.H[i], d[i], this.Hd[i]);
                 denominator += Descent.dotProd(d[i], this.Hd[i]);
             }
             if (denominator === 0 || !isFinite(denominator))
                 return 0;
-            return numerator / denominator;
+            return 1 * numerator / denominator;
         };
         Descent.prototype.reduceStress = function () {
             this.computeDerivatives(this.x);
@@ -2470,6 +2413,17 @@ var cola;
             this.takeDescentStep(r[1], d[1], stepSize);
             if (this.project)
                 this.project[1](r[0], x0[1], r[1]);
+            // todo: allow projection against constraints in higher dimensions
+            for (var i = 2; i < this.k; i++)
+                this.takeDescentStep(r[i], d[i], stepSize);
+            // the following makes locks extra sticky... but hides the result of the projection from the consumer
+            //if (!this.locks.isEmpty()) {
+            //    this.locks.apply((u, p) => {
+            //        for (var i = 0; i < this.k; i++) {
+            //            r[i][u] = p[i];
+            //        }
+            //    });
+            //}
         };
         Descent.mApply = function (m, n, f) {
             var i = m;
@@ -2487,10 +2441,11 @@ var cola;
             this.computeDerivatives(x0);
             var alpha = this.computeStepSize(this.g);
             this.stepAndProject(x0, r, this.g, alpha);
-            for (var u = 0; u < this.n; ++u)
-                for (var i = 0; i < this.k; ++i)
-                    if (isNaN(r[i][u]))
-                        debugger;
+            /* DEBUG
+                        for (var u: number = 0; u < this.n; ++u)
+                            for (var i = 0; i < this.k; ++i)
+                                if (isNaN(r[i][u])) debugger;
+            DEBUG */
             if (this.project) {
                 this.matrixApply(function (i, j) { return _this.e[i][j] = x0[i][j] - r[i][j]; });
                 var beta = this.computeStepSize(this.e);
@@ -2524,7 +2479,9 @@ var cola;
             return disp;
         };
         Descent.mid = function (a, b, m) {
-            Descent.mApply(a.length, a[0].length, function (i, j) { return m[i][j] = a[i][j] + (b[i][j] - a[i][j]) / 2.0; });
+            Descent.mApply(a.length, a[0].length, function (i, j) {
+                return m[i][j] = a[i][j] + (b[i][j] - a[i][j]) / 2.0;
+            });
         };
         Descent.prototype.takeDescentStep = function (x, d, stepSize) {
             for (var i = 0; i < this.n; ++i) {
@@ -2737,6 +2694,7 @@ var cola;
                     if (!m.isIsland() || m.isPredefined()) {
                         g = { id: m.gid };
                         if (m.isPredefined())
+                            // Apply original group properties
                             for (var prop in m.definition)
                                 g[prop] = m.definition[prop];
                         if (!group.groups)
@@ -2961,7 +2919,9 @@ var cola;
      */
     function jaccardLinkLengths(links, la, w) {
         if (w === void 0) { w = 1; }
-        computeLinkLengths(links, w, function (a, b) { return Math.min(Object.keys(a).length, Object.keys(b).length) < 1.1 ? 0 : intersectionCount(a, b) / unionCount(a, b); }, la);
+        computeLinkLengths(links, w, function (a, b) {
+            return Math.min(Object.keys(a).length, Object.keys(b).length) < 1.1 ? 0 : intersectionCount(a, b) / unionCount(a, b);
+        }, la);
     }
     cola.jaccardLinkLengths = jaccardLinkLengths;
     /** generate separation constraints for all edges unless both their source and sink are in the same strongly connected component
@@ -2970,11 +2930,13 @@ var cola;
     function generateDirectedEdgeConstraints(n, links, axis, la) {
         var components = stronglyConnectedComponents(n, links, la);
         var nodes = {};
-        components.filter(function (c) { return c.length > 1; }).forEach(function (c) { return c.forEach(function (v) { return nodes[v] = c; }); });
+        components.forEach(function (c, i) {
+            return c.forEach(function (v) { return nodes[v] = i; });
+        });
         var constraints = [];
         links.forEach(function (l) {
             var ui = la.getSourceIndex(l), vi = la.getTargetIndex(l), u = nodes[ui], v = nodes[vi];
-            if (!u || !v || u.component !== v.component) {
+            if (u !== v) {
                 constraints.push({
                     axis: axis,
                     left: ui,
@@ -2986,86 +2948,67 @@ var cola;
         return constraints;
     }
     cola.generateDirectedEdgeConstraints = generateDirectedEdgeConstraints;
-    /*
-    Following function based on: https://github.com/mikolalysenko/strongly-connected-components
-
-    The MIT License (MIT)
-
-    Copyright (c) 2013 Mikola Lysenko
-
-    Permission is hereby granted, free of charge, to any person obtaining a copy
-    of this software and associated documentation files (the "Software"), to deal
-    in the Software without restriction, including without limitation the rights
-    to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-    copies of the Software, and to permit persons to whom the Software is
-    furnished to do so, subject to the following conditions:
-
-    The above copyright notice and this permission notice shall be included in
-    all copies or substantial portions of the Software.
-
-    THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-    IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-    FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-    AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-    LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-    OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
-    THE SOFTWARE.
-    */
+    /**
+     * Tarjan's strongly connected components algorithm for directed graphs
+     * returns an array of arrays of node indicies in each of the strongly connected components.
+     * a vertex not in a SCC of two or more nodes is it's own SCC.
+     * adaptation of https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
+     */
     function stronglyConnectedComponents(numVertices, edges, la) {
-        var adjList = new Array(numVertices);
-        var index = new Array(numVertices);
-        var lowValue = new Array(numVertices);
-        var active = new Array(numVertices);
-        for (var i = 0; i < numVertices; ++i) {
-            adjList[i] = [];
-            index[i] = -1;
-            lowValue[i] = 0;
-            active[i] = false;
-        }
-        for (var i = 0; i < edges.length; ++i) {
-            adjList[la.getSourceIndex(edges[i])].push(la.getTargetIndex(edges[i]));
-        }
-        var count = 0;
-        var S = [];
+        var nodes = [];
+        var index = 0;
+        var stack = [];
         var components = [];
         function strongConnect(v) {
-            index[v] = count;
-            lowValue[v] = count;
-            active[v] = true;
-            count += 1;
-            S.push(v);
-            var e = adjList[v];
-            for (var i = 0; i < e.length; ++i) {
-                var u = e[i];
-                if (index[u] < 0) {
-                    strongConnect(u);
-                    lowValue[v] = Math.min(lowValue[v], lowValue[u]) | 0;
+            // Set the depth index for v to the smallest unused index
+            v.index = v.lowlink = index++;
+            stack.push(v);
+            v.onStack = true;
+            // Consider successors of v
+            for (var _i = 0, _a = v.out; _i < _a.length; _i++) {
+                var w = _a[_i];
+                if (typeof w.index === 'undefined') {
+                    // Successor w has not yet been visited; recurse on it
+                    strongConnect(w);
+                    v.lowlink = Math.min(v.lowlink, w.lowlink);
                 }
-                else if (active[u]) {
-                    lowValue[v] = Math.min(lowValue[v], lowValue[u]);
+                else if (w.onStack) {
+                    // Successor w is in stack S and hence in the current SCC
+                    v.lowlink = Math.min(v.lowlink, w.index);
                 }
             }
-            if (lowValue[v] === index[v]) {
+            // If v is a root node, pop the stack and generate an SCC
+            if (v.lowlink === v.index) {
+                // start a new strongly connected component
                 var component = [];
-                for (var i = S.length - 1; i >= 0; --i) {
-                    var w = S[i];
-                    active[w] = false;
+                while (stack.length) {
+                    w = stack.pop();
+                    w.onStack = false;
+                    //add w to current strongly connected component
                     component.push(w);
-                    if (w === v) {
-                        S.length = i;
+                    if (w === v)
                         break;
-                    }
                 }
-                components.push(component);
+                // output the current strongly connected component
+                components.push(component.map(function (v) { return v.id; }));
             }
         }
-        for (var i = 0; i < numVertices; ++i) {
-            if (index[i] < 0) {
-                strongConnect(i);
-            }
+        for (var i = 0; i < numVertices; i++) {
+            nodes.push({ id: i, out: [] });
+        }
+        for (var _i = 0; _i < edges.length; _i++) {
+            var e = edges[_i];
+            var v_1 = nodes[la.getSourceIndex(e)], w = nodes[la.getTargetIndex(e)];
+            v_1.out.push(w);
+        }
+        for (var _a = 0; _a < nodes.length; _a++) {
+            var v = nodes[_a];
+            if (typeof v.index === 'undefined')
+                strongConnect(v);
         }
         return components;
     }
+    cola.stronglyConnectedComponents = stronglyConnectedComponents;
 })(cola || (cola = {}));
 var PairingHeap = (function () {
     // from: https://gist.github.com/nervoussystem
@@ -3203,7 +3146,8 @@ var PriorityQueue = (function () {
         var pairingNode;
         for (var i = 0, arg; arg = args[i]; ++i) {
             pairingNode = new PairingHeap(arg);
-            this.root = this.empty() ? pairingNode : this.root.merge(pairingNode, this.lessThan);
+            this.root = this.empty() ?
+                pairingNode : this.root.merge(pairingNode, this.lessThan);
         }
         return pairingNode;
     };
@@ -3439,6 +3383,9 @@ var cola;
     })(cola.EventType || (cola.EventType = {}));
     var EventType = cola.EventType;
     ;
+    function isGroup(g) {
+        return typeof g.leaves !== 'undefined' || typeof g.groups !== 'undefined';
+    }
     /**
      * Main interface to cola layout.
      * @class Layout
@@ -3456,7 +3403,6 @@ var cola;
             this._running = false;
             this._nodes = [];
             this._groups = [];
-            this._variables = [];
             this._rootGroup = null;
             this._links = [];
             this._constraints = [];
@@ -3509,12 +3455,13 @@ var cola;
         Layout.prototype.tick = function () {
             if (this._alpha < this._threshold) {
                 this._running = false;
-                this.trigger({ type: 2 /* end */, alpha: this._alpha = 0, stress: this._lastStress });
+                this.trigger({ type: EventType.end, alpha: this._alpha = 0, stress: this._lastStress });
                 return true;
             }
-            var n = this._nodes.length, m = this._links.length, o;
+            var n = this._nodes.length, m = this._links.length;
+            var o, i;
             this._descent.locks.clear();
-            for (var i = 0; i < n; ++i) {
+            for (i = 0; i < n; ++i) {
                 o = this._nodes[i];
                 if (o.fixed) {
                     if (typeof o.px === 'undefined' || typeof o.py === 'undefined') {
@@ -3534,24 +3481,25 @@ var cola;
                 this._alpha = s1; //Math.abs(Math.abs(this._lastStress / s1) - 1);
             }
             this._lastStress = s1;
-            for (var i = 0; i < n; ++i) {
-                o = this._nodes[i];
-                if (o.fixed) {
-                    o.x = o.px;
-                    o.y = o.py;
-                }
-                else {
-                    o.x = this._descent.x[0][i];
-                    o.y = this._descent.x[1][i];
-                }
-            }
-            this.trigger({ type: 1 /* tick */, alpha: this._alpha, stress: this._lastStress });
+            this.updateNodePositions();
+            this.trigger({ type: EventType.tick, alpha: this._alpha, stress: this._lastStress });
             return false;
+        };
+        // copy positions out of descent instance into each of the nodes' center coords
+        Layout.prototype.updateNodePositions = function () {
+            var x = this._descent.x[0], y = this._descent.x[1];
+            var o, i = this._nodes.length;
+            while (i--) {
+                o = this._nodes[i];
+                o.x = x[i];
+                o.y = y[i];
+            }
         };
         Layout.prototype.nodes = function (v) {
             if (!v) {
                 if (this._nodes.length === 0 && this._links.length > 0) {
                     // if we have links but no nodes, create the nodes array now with empty objects for the links to point at.
+                    // in this case the links are expected to be numeric indices for nodes in the range 0..n-1 where n is the number of nodes
                     var n = 0;
                     this._links.forEach(function (l) {
                         n = Math.max(n, l.source, l.target);
@@ -3576,13 +3524,9 @@ var cola;
                 if (typeof g.padding === "undefined")
                     g.padding = 1;
                 if (typeof g.leaves !== "undefined")
-                    g.leaves.forEach(function (v, i) {
-                        (g.leaves[i] = _this._nodes[v]).parent = g;
-                    });
+                    g.leaves.forEach(function (v, i) { (g.leaves[i] = _this._nodes[v]).parent = g; });
                 if (typeof g.groups !== "undefined")
-                    g.groups.forEach(function (gi, i) {
-                        (g.groups[i] = _this._groups[gi]).parent = g;
-                    });
+                    g.groups.forEach(function (gi, i) { (g.groups[i] = _this._groups[gi]).parent = g; });
             });
             this._rootGroup.leaves = this._nodes.filter(function (v) { return typeof v.parent === 'undefined'; });
             this._rootGroup.groups = this._groups.filter(function (g) { return typeof g.parent === 'undefined'; });
@@ -3617,9 +3561,7 @@ var cola;
                 axis = 'y';
             this._directedLinkConstraints = {
                 axis: axis,
-                getMinSeparation: typeof minSeparation === 'number' ? function () {
-                    return minSeparation;
-                } : minSeparation
+                getMinSeparation: typeof minSeparation === 'number' ? function () { return minSeparation; } : minSeparation
             };
             return this;
         };
@@ -3691,7 +3633,7 @@ var cola;
                 else if (x > 0) {
                     if (!this._running) {
                         this._running = true;
-                        this.trigger({ type: 0 /* start */, alpha: this._alpha = x });
+                        this.trigger({ type: EventType.start, alpha: this._alpha = x });
                         this.kick();
                     }
                 }
@@ -3748,19 +3690,19 @@ var cola;
          * @param {number} [initialUserConstraintIterations=0] initial layout iterations with user-specified constraints
          * @param {number} [initialAllConstraintsIterations=0] initial layout iterations with all constraints including non-overlap
          * @param {number} [gridSnapIterations=0] iterations of "grid snap", which pulls nodes towards grid cell centers - grid of size node[0].width - only really makes sense if all nodes have the same width and height
+         * @param [keepRunning=true] keep iterating asynchronously via the tick method
          */
-        Layout.prototype.start = function (initialUnconstrainedIterations, initialUserConstraintIterations, initialAllConstraintsIterations, gridSnapIterations) {
+        Layout.prototype.start = function (initialUnconstrainedIterations, initialUserConstraintIterations, initialAllConstraintsIterations, gridSnapIterations, keepRunning) {
             var _this = this;
             if (initialUnconstrainedIterations === void 0) { initialUnconstrainedIterations = 0; }
             if (initialUserConstraintIterations === void 0) { initialUserConstraintIterations = 0; }
             if (initialAllConstraintsIterations === void 0) { initialAllConstraintsIterations = 0; }
             if (gridSnapIterations === void 0) { gridSnapIterations = 0; }
+            if (keepRunning === void 0) { keepRunning = true; }
             var i, j, n = this.nodes().length, N = n + 2 * this._groups.length, m = this._links.length, w = this._canvasSize[0], h = this._canvasSize[1];
             if (this._linkLengthCalculator)
                 this._linkLengthCalculator();
             var x = new Array(N), y = new Array(N);
-            this._variables = new Array(N);
-            var makeVariable = function (i, w) { return _this._variables[i] = new cola.vpsc.IndexedVariable(i, w); };
             var G = null;
             var ao = this._avoidOverlaps;
             this._nodes.forEach(function (v, i) {
@@ -3783,9 +3725,15 @@ var cola;
                 // G is a square matrix with G[i][j] = 1 iff there exists an edge between node i and node j
                 // otherwise 2. (
                 G = cola.Descent.createSquareMatrix(N, function () { return 2; });
+                this._links.forEach(function (l) {
+                    if (typeof l.source == "number")
+                        l.source = _this._nodes[l.source];
+                    if (typeof l.target == "number")
+                        l.target = _this._nodes[l.target];
+                });
                 this._links.forEach(function (e) {
                     var u = Layout.getSourceIndex(e), v = Layout.getTargetIndex(e);
-                    G[u][v] = G[v][u] = 1;
+                    G[u][v] = G[v][u] = e.weight || 1;
                 });
             }
             var D = cola.Descent.createSquareMatrix(N, function (i, j) {
@@ -3838,21 +3786,20 @@ var cola;
             }
             this._descent.threshold = this._threshold;
             // apply initialIterations without user constraints or nonoverlap constraints
-            this._descent.run(initialUnconstrainedIterations);
+            // if groups are specified, dummy nodes and edges will be added to untangle
+            // with respect to group connectivity
+            this.initialLayout(initialUnconstrainedIterations, x, y);
             // apply initialIterations with user constraints but no nonoverlap constraints
             if (curConstraints.length > 0)
                 this._descent.project = new cola.vpsc.Projection(this._nodes, this._groups, this._rootGroup, curConstraints).projectFunctions();
             this._descent.run(initialUserConstraintIterations);
+            this.separateOverlappingComponents(w, h);
             // subsequent iterations will apply all constraints
             this.avoidOverlaps(ao);
             if (ao) {
-                this._nodes.forEach(function (v, i) {
-                    v.x = x[i], v.y = y[i];
-                });
+                this._nodes.forEach(function (v, i) { v.x = x[i], v.y = y[i]; });
                 this._descent.project = new cola.vpsc.Projection(this._nodes, this._groups, this._rootGroup, curConstraints, true).projectFunctions();
-                this._nodes.forEach(function (v, i) {
-                    x[i] = v.x, y[i] = v.y;
-                });
+                this._nodes.forEach(function (v, i) { x[i] = v.x, y[i] = v.y; });
             }
             // allow not immediately connected nodes to relax apart (p-stress)
             this._descent.G = G;
@@ -3870,24 +3817,62 @@ var cola;
                 this._descent.G = G0;
                 this._descent.run(gridSnapIterations);
             }
-            this._links.forEach(function (l) {
-                if (typeof l.source == "number")
-                    l.source = _this._nodes[l.source];
-                if (typeof l.target == "number")
-                    l.target = _this._nodes[l.target];
-            });
-            this._nodes.forEach(function (v, i) {
-                v.x = x[i], v.y = y[i];
-            });
-            // recalculate nodes position for disconnected graphs
-            if (!this._distanceMatrix && this._handleDisconnected) {
-                var graphs = cola.separateGraphs(this._nodes, this._links);
-                cola.applyPacking(graphs, w, h, this._defaultNodeSize);
-                this._nodes.forEach(function (v, i) {
-                    _this._descent.x[0][i] = v.x, _this._descent.x[1][i] = v.y;
+            this.updateNodePositions();
+            this.separateOverlappingComponents(w, h);
+            return keepRunning ? this.resume() : this;
+        };
+        Layout.prototype.initialLayout = function (iterations, x, y) {
+            if (this._groups.length > 0 && iterations > 0) {
+                // construct a flat graph with dummy nodes for the groups and edges connecting group dummy nodes to their children
+                // todo: edges attached to groups are replaced with edges connected to the corresponding group dummy node
+                var n = this._nodes.length;
+                var edges = this._links.map(function (e) { return { source: e.source.index, target: e.target.index }; });
+                var vs = this._nodes.map(function (v) { return { index: v.index }; });
+                this._groups.forEach(function (g, i) {
+                    vs.push({ index: g.index = n + i });
+                });
+                this._groups.forEach(function (g, i) {
+                    if (typeof g.leaves !== 'undefined')
+                        g.leaves.forEach(function (v) { return edges.push({ source: g.index, target: v.index }); });
+                    if (typeof g.groups !== 'undefined')
+                        g.groups.forEach(function (gg) { return edges.push({ source: g.index, target: gg.index }); });
+                });
+                // layout the flat graph with dummy nodes and edges
+                new cola.Layout()
+                    .size(this.size())
+                    .nodes(vs)
+                    .links(edges)
+                    .avoidOverlaps(false)
+                    .linkDistance(this.linkDistance())
+                    .symmetricDiffLinkLengths(5)
+                    .convergenceThreshold(1e-4)
+                    .start(iterations, 0, 0, 0, false);
+                this._nodes.forEach(function (v) {
+                    x[v.index] = vs[v.index].x;
+                    y[v.index] = vs[v.index].y;
                 });
             }
-            return this.resume();
+            else {
+                this._descent.run(iterations);
+            }
+        };
+        // recalculate nodes position for disconnected graphs
+        Layout.prototype.separateOverlappingComponents = function (width, height) {
+            var _this = this;
+            // recalculate nodes position for disconnected graphs
+            if (!this._distanceMatrix && this._handleDisconnected) {
+                var x = this._descent.x[0], y = this._descent.x[1];
+                this._nodes.forEach(function (v, i) { v.x = x[i], v.y = y[i]; });
+                var graphs = cola.separateGraphs(this._nodes, this._links);
+                cola.applyPacking(graphs, width, height, this._defaultNodeSize);
+                this._nodes.forEach(function (v, i) {
+                    _this._descent.x[0][i] = v.x, _this._descent.x[1][i] = v.y;
+                    if (v.bounds) {
+                        v.bounds.setXCentre(v.x);
+                        v.bounds.setYCentre(v.y);
+                    }
+                });
+            }
         };
         Layout.prototype.resume = function () {
             return this.alpha(0.1);
@@ -3895,32 +3880,38 @@ var cola;
         Layout.prototype.stop = function () {
             return this.alpha(0);
         };
+        /// find a visibility graph over the set of nodes.  assumes all nodes have a
+        /// bounds property (a rectangle) and that no pair of bounds overlaps.
         Layout.prototype.prepareEdgeRouting = function (nodeMargin) {
             if (nodeMargin === void 0) { nodeMargin = 0; }
             this._visibilityGraph = new cola.geom.TangentVisibilityGraph(this._nodes.map(function (v) {
                 return v.bounds.inflate(-nodeMargin).vertices();
             }));
         };
-        Layout.prototype.routeEdge = function (d, draw) {
+        /// find a route avoiding node bounds for the given edge.
+        /// assumes the visibility graph has been created (by prepareEdgeRouting method)
+        /// and also assumes that nodes have an index property giving their position in the
+        /// node array.  This index property is created by the start() method.
+        Layout.prototype.routeEdge = function (edge, draw) {
             var lineData = [];
             //if (d.source.id === 10 && d.target.id === 11) {
             //    debugger;
             //}
-            var vg2 = new cola.geom.TangentVisibilityGraph(this._visibilityGraph.P, { V: this._visibilityGraph.V, E: this._visibilityGraph.E }), port1 = { x: d.source.x, y: d.source.y }, port2 = { x: d.target.x, y: d.target.y }, start = vg2.addPoint(port1, d.source.id), end = vg2.addPoint(port2, d.target.id);
-            vg2.addEdgeIfVisible(port1, port2, d.source.id, d.target.id);
+            var vg2 = new cola.geom.TangentVisibilityGraph(this._visibilityGraph.P, { V: this._visibilityGraph.V, E: this._visibilityGraph.E }), port1 = { x: edge.source.x, y: edge.source.y }, port2 = { x: edge.target.x, y: edge.target.y }, start = vg2.addPoint(port1, edge.source.index), end = vg2.addPoint(port2, edge.target.index);
+            vg2.addEdgeIfVisible(port1, port2, edge.source.index, edge.target.index);
             if (typeof draw !== 'undefined') {
                 draw(vg2);
             }
             var sourceInd = function (e) { return e.source.id; }, targetInd = function (e) { return e.target.id; }, length = function (e) { return e.length(); }, spCalc = new cola.shortestpaths.Calculator(vg2.V.length, vg2.E, sourceInd, targetInd, length), shortestPath = spCalc.PathFromNodeToNode(start.id, end.id);
             if (shortestPath.length === 1 || shortestPath.length === vg2.V.length) {
-                cola.vpsc.makeEdgeBetween(d, d.source.innerBounds, d.target.innerBounds, 5);
-                lineData = [{ x: d.sourceIntersection.x, y: d.sourceIntersection.y }, { x: d.arrowStart.x, y: d.arrowStart.y }];
+                var route = cola.vpsc.makeEdgeBetween(edge.source.innerBounds, edge.target.innerBounds, 5);
+                lineData = [route.sourceIntersection, route.arrowStart];
             }
             else {
-                var n = shortestPath.length - 2, p = vg2.V[shortestPath[n]].p, q = vg2.V[shortestPath[0]].p, lineData = [d.source.innerBounds.rayIntersection(p.x, p.y)];
+                var n = shortestPath.length - 2, p = vg2.V[shortestPath[n]].p, q = vg2.V[shortestPath[0]].p, lineData = [edge.source.innerBounds.rayIntersection(p.x, p.y)];
                 for (var i = n; i >= 0; --i)
                     lineData.push(vg2.V[shortestPath[i]].p);
-                lineData.push(cola.vpsc.makeEdgeTo(q, d.target.innerBounds, 5));
+                lineData.push(cola.vpsc.makeEdgeTo(q, edge.target.innerBounds, 5));
             }
             //lineData.forEach((v, i) => {
             //    if (i > 0) {
@@ -3952,25 +3943,239 @@ var cola;
         // Bit 1 can be set externally (e.g., d.fixed = true) and show persist.
         // Bit 2 stores the dragging state, from mousedown to mouseup.
         // Bit 3 stores the hover state, from mouseover to mouseout.
-        // Dragend is a special case: it also clears the hover state.
         Layout.dragStart = function (d) {
-            d.fixed |= 2; // set bit 2
-            d.px = d.x, d.py = d.y; // set velocity to zero
+            if (isGroup(d)) {
+                Layout.storeOffset(d, Layout.dragOrigin(d));
+            }
+            else {
+                Layout.stopNode(d);
+                d.fixed |= 2; // set bit 2
+            }
         };
+        // we clobber any existing desired positions for nodes
+        // in case another tick event occurs before the drag
+        Layout.stopNode = function (v) {
+            v.px = v.x;
+            v.py = v.y;
+        };
+        // we store offsets for each node relative to the centre of the ancestor group 
+        // being dragged in a pair of properties on the node
+        Layout.storeOffset = function (d, origin) {
+            if (typeof d.leaves !== 'undefined') {
+                d.leaves.forEach(function (v) {
+                    v.fixed |= 2;
+                    Layout.stopNode(v);
+                    v._dragGroupOffsetX = v.x - origin.x;
+                    v._dragGroupOffsetY = v.y - origin.y;
+                });
+            }
+            if (typeof d.groups !== 'undefined') {
+                d.groups.forEach(function (g) { return Layout.storeOffset(g, origin); });
+            }
+        };
+        // the drag origin is taken as the centre of the node or group
+        Layout.dragOrigin = function (d) {
+            if (isGroup(d)) {
+                return {
+                    x: d.bounds.cx(),
+                    y: d.bounds.cy()
+                };
+            }
+            else {
+                return d;
+            }
+        };
+        // for groups, the drag translation is propagated down to all of the children of
+        // the group.
+        Layout.drag = function (d, position) {
+            if (isGroup(d)) {
+                if (typeof d.leaves !== 'undefined') {
+                    d.leaves.forEach(function (v) {
+                        d.bounds.setXCentre(position.x);
+                        d.bounds.setYCentre(position.y);
+                        v.px = v._dragGroupOffsetX + position.x;
+                        v.py = v._dragGroupOffsetY + position.y;
+                    });
+                }
+                if (typeof d.groups !== 'undefined') {
+                    d.groups.forEach(function (g) { return Layout.drag(g, position); });
+                }
+            }
+            else {
+                d.px = position.x;
+                d.py = position.y;
+            }
+        };
+        // we unset only bits 2 and 3 so that the user can fix nodes with another a different
+        // bit such that the lock persists between drags 
         Layout.dragEnd = function (d) {
-            d.fixed &= ~6; // unset bits 2 and 3
-            //d.fixed = 0;
+            if (isGroup(d)) {
+                if (typeof d.leaves !== 'undefined') {
+                    d.leaves.forEach(function (v) {
+                        Layout.dragEnd(v);
+                        delete v._dragGroupOffsetX;
+                        delete v._dragGroupOffsetY;
+                    });
+                }
+                if (typeof d.groups !== 'undefined') {
+                    d.groups.forEach(Layout.dragEnd);
+                }
+            }
+            else {
+                d.fixed &= ~6; // unset bits 2 and 3
+            }
         };
+        // in d3 hover temporarily locks nodes, currently not used in cola
         Layout.mouseOver = function (d) {
             d.fixed |= 4; // set bit 3
             d.px = d.x, d.py = d.y; // set velocity to zero
         };
+        // in d3 hover temporarily locks nodes, currently not used in cola
         Layout.mouseOut = function (d) {
             d.fixed &= ~4; // unset bit 3
         };
         return Layout;
     })();
     cola.Layout = Layout;
+})(cola || (cola = {}));
+///<reference path="layout.ts"/>
+var cola;
+(function (cola) {
+    var LayoutAdaptor = (function (_super) {
+        __extends(LayoutAdaptor, _super);
+        function LayoutAdaptor(options) {
+            _super.call(this);
+            // take in implementation as defined by client
+            var self = this;
+            var o = options;
+            if (o.trigger) {
+                this.trigger = o.trigger;
+            }
+            if (o.kick) {
+                this.kick = o.kick;
+            }
+            if (o.drag) {
+                this.drag = o.drag;
+            }
+            if (o.on) {
+                this.on = o.on;
+            }
+            this.dragstart = this.dragStart = cola.Layout.dragStart;
+            this.dragend = this.dragEnd = cola.Layout.dragEnd;
+        }
+        // dummy functions in case not defined by client
+        LayoutAdaptor.prototype.trigger = function (e) { };
+        ;
+        LayoutAdaptor.prototype.kick = function () { };
+        ;
+        LayoutAdaptor.prototype.drag = function () { };
+        ;
+        LayoutAdaptor.prototype.on = function (eventType, listener) { return this; };
+        ;
+        return LayoutAdaptor;
+    })(cola.Layout);
+    cola.LayoutAdaptor = LayoutAdaptor;
+    /**
+     * provides an interface for use with any external graph system (e.g. Cytoscape.js):
+     */
+    function adaptor(options) {
+        return new LayoutAdaptor(options);
+    }
+    cola.adaptor = adaptor;
+})(cola || (cola = {}));
+var cola;
+(function (cola) {
+    function gridify(pgLayout, nudgeGap, margin, groupMargin) {
+        pgLayout.cola.start(0, 0, 0, 10, false);
+        var gridrouter = route(pgLayout.cola.nodes(), pgLayout.cola.groups(), margin, groupMargin);
+        return gridrouter.routeEdges(pgLayout.powerGraph.powerEdges, nudgeGap, function (e) { return e.source.routerNode.id; }, function (e) { return e.target.routerNode.id; });
+    }
+    cola.gridify = gridify;
+    function route(nodes, groups, margin, groupMargin) {
+        nodes.forEach(function (d) {
+            d.routerNode = {
+                name: d.name,
+                bounds: d.bounds.inflate(-margin)
+            };
+        });
+        groups.forEach(function (d) {
+            d.routerNode = {
+                bounds: d.bounds.inflate(-groupMargin),
+                children: (typeof d.groups !== 'undefined' ? d.groups.map(function (c) { return nodes.length + c.id; }) : [])
+                    .concat(typeof d.leaves !== 'undefined' ? d.leaves.map(function (c) { return c.index; }) : [])
+            };
+        });
+        var gridRouterNodes = nodes.concat(groups).map(function (d, i) {
+            d.routerNode.id = i;
+            return d.routerNode;
+        });
+        return new cola.GridRouter(gridRouterNodes, {
+            getChildren: function (v) { return v.children; },
+            getBounds: function (v) { return v.bounds; }
+        }, margin - groupMargin);
+    }
+    function powerGraphGridLayout(graph, size, grouppadding, margin, groupMargin) {
+        // compute power graph
+        var powerGraph;
+        graph.nodes.forEach(function (v, i) { return v.index = i; });
+        new cola.Layout()
+            .avoidOverlaps(false)
+            .nodes(graph.nodes)
+            .links(graph.links)
+            .powerGraphGroups(function (d) {
+            powerGraph = d;
+            powerGraph.groups.forEach(function (v) { return v.padding = grouppadding; });
+        });
+        // construct a flat graph with dummy nodes for the groups and edges connecting group dummy nodes to their children
+        // power edges attached to groups are replaced with edges connected to the corresponding group dummy node
+        var n = graph.nodes.length;
+        var edges = [];
+        var vs = graph.nodes.slice(0);
+        vs.forEach(function (v, i) { return v.index = i; });
+        powerGraph.groups.forEach(function (g) {
+            var sourceInd = g.index = g.id + n;
+            vs.push(g);
+            if (typeof g.leaves !== 'undefined')
+                g.leaves.forEach(function (v) { return edges.push({ source: sourceInd, target: v.index }); });
+            if (typeof g.groups !== 'undefined')
+                g.groups.forEach(function (gg) { return edges.push({ source: sourceInd, target: gg.id + n }); });
+        });
+        powerGraph.powerEdges.forEach(function (e) {
+            edges.push({ source: e.source.index, target: e.target.index });
+        });
+        // layout the flat graph with dummy nodes and edges
+        new cola.Layout()
+            .size(size)
+            .nodes(vs)
+            .links(edges)
+            .avoidOverlaps(false)
+            .linkDistance(30)
+            .symmetricDiffLinkLengths(5)
+            .convergenceThreshold(1e-4)
+            .start(100, 0, 0, 0, false);
+        // final layout taking node positions from above as starting positions
+        // subject to group containment constraints
+        // and then gridifying the layout
+        return {
+            cola: new cola.Layout()
+                .convergenceThreshold(1e-3)
+                .size(size)
+                .avoidOverlaps(true)
+                .nodes(graph.nodes)
+                .links(graph.links)
+                .groupCompactness(1e-4)
+                .linkDistance(30)
+                .symmetricDiffLinkLengths(5)
+                .powerGraphGroups(function (d) {
+                powerGraph = d;
+                powerGraph.groups.forEach(function (v) {
+                    v.padding = grouppadding;
+                });
+            }).start(50, 0, 100, 0, false),
+            powerGraph: powerGraph
+        };
+    }
+    cola.powerGraphGridLayout = powerGraphGridLayout;
 })(cola || (cola = {}));
 ///<reference path="../extern/d3.d.ts"/>
 ///<reference path="layout.ts"/>
@@ -3980,20 +4185,26 @@ var cola;
         __extends(D3StyleLayoutAdaptor, _super);
         function D3StyleLayoutAdaptor() {
             _super.call(this);
-            this.event = d3.dispatch(cola.EventType[0 /* start */], cola.EventType[1 /* tick */], cola.EventType[2 /* end */]);
+            this.event = d3.dispatch(cola.EventType[cola.EventType.start], cola.EventType[cola.EventType.tick], cola.EventType[cola.EventType.end]);
             // bit of trickyness remapping 'this' so we can reference it in the function body.
             var d3layout = this;
+            var drag;
             this.drag = function () {
-                var drag = d3.behavior.drag().origin(function (d) {
-                    return d;
-                }).on("dragstart.d3adaptor", cola.Layout.dragStart).on("drag.d3adaptor", function (d) {
-                    d.px = d3.event.x, d.py = d3.event.y;
-                    d3layout.resume(); // restart annealing
-                }).on("dragend.d3adaptor", cola.Layout.dragEnd);
+                if (!drag) {
+                    var drag = d3.behavior.drag()
+                        .origin(cola.Layout.dragOrigin)
+                        .on("dragstart.d3adaptor", cola.Layout.dragStart)
+                        .on("drag.d3adaptor", function (d) {
+                        cola.Layout.drag(d, d3.event);
+                        d3layout.resume(); // restart annealing
+                    })
+                        .on("dragend.d3adaptor", cola.Layout.dragEnd);
+                }
                 if (!arguments.length)
                     return drag;
                 // this is the context of the function, i.e. the d3 selection
-                this.call(drag);
+                this //.on("mouseover.adaptor", colaMouseover)
+                    .call(drag);
             };
         }
         D3StyleLayoutAdaptor.prototype.trigger = function (e) {
@@ -4122,10 +4333,12 @@ var cola;
             this.nodes = originalnodes.map(function (v, i) { return new NodeWrapper(i, accessor.getBounds(v), accessor.getChildren(v)); });
             this.leaves = this.nodes.filter(function (v) { return v.leaf; });
             this.groups = this.nodes.filter(function (g) { return !g.leaf; });
-            this.cols = this.getGridDim('x');
-            this.rows = this.getGridDim('y');
+            this.cols = this.getGridLines('x');
+            this.rows = this.getGridLines('y');
             // create parents for each node or group that is a member of another's children 
-            this.groups.forEach(function (v) { return v.children.forEach(function (c) { return _this.nodes[c].parent = v; }); });
+            this.groups.forEach(function (v) {
+                return v.children.forEach(function (c) { return _this.nodes[c].parent = v; });
+            });
             // root claims the remaining orphans
             this.root = { children: [] };
             this.nodes.forEach(function (v) {
@@ -4152,15 +4365,17 @@ var cola;
                 v.children.forEach(function (c) { return r = r.union(_this.nodes[c].rect); });
                 v.rect = r.inflate(_this.groupPadding);
             });
-            var colMids = this.midPoints(this.cols.map(function (r) { return r.x; }));
-            var rowMids = this.midPoints(this.rows.map(function (r) { return r.y; }));
+            var colMids = this.midPoints(this.cols.map(function (r) { return r.pos; }));
+            var rowMids = this.midPoints(this.rows.map(function (r) { return r.pos; }));
             // setup extents of lines
             var rowx = colMids[0], rowX = colMids[colMids.length - 1];
             var coly = rowMids[0], colY = rowMids[rowMids.length - 1];
             // horizontal lines
-            var hlines = this.rows.map(function (r) { return { x1: rowx, x2: rowX, y1: r.y, y2: r.y }; }).concat(rowMids.map(function (m) { return { x1: rowx, x2: rowX, y1: m, y2: m }; }));
+            var hlines = this.rows.map(function (r) { return { x1: rowx, x2: rowX, y1: r.pos, y2: r.pos }; })
+                .concat(rowMids.map(function (m) { return { x1: rowx, x2: rowX, y1: m, y2: m }; }));
             // vertical lines
-            var vlines = this.cols.map(function (c) { return { x1: c.x, x2: c.x, y1: coly, y2: colY }; }).concat(colMids.map(function (m) { return { x1: m, x2: m, y1: coly, y2: colY }; }));
+            var vlines = this.cols.map(function (c) { return { x1: c.pos, x2: c.pos, y1: coly, y2: colY }; })
+                .concat(colMids.map(function (m) { return { x1: m, x2: m, y1: coly, y2: colY }; }));
             // the full set of lines
             var lines = hlines.concat(vlines);
             // we record the vertices associated with each line
@@ -4169,22 +4384,24 @@ var cola;
             this.verts = [];
             this.edges = [];
             // create vertices at the crossings of horizontal and vertical grid-lines
-            hlines.forEach(function (h) { return vlines.forEach(function (v) {
-                var p = new Vert(_this.verts.length, v.x1, h.y1);
-                h.verts.push(p);
-                v.verts.push(p);
-                _this.verts.push(p);
-                // assign vertices to the nodes immediately under them
-                var i = _this.backToFront.length;
-                while (i-- > 0) {
-                    var node = _this.backToFront[i], r = node.rect;
-                    var dx = Math.abs(p.x - r.cx()), dy = Math.abs(p.y - r.cy());
-                    if (dx < r.width() / 2 && dy < r.height() / 2) {
-                        p.node = node;
-                        break;
+            hlines.forEach(function (h) {
+                return vlines.forEach(function (v) {
+                    var p = new Vert(_this.verts.length, v.x1, h.y1);
+                    h.verts.push(p);
+                    v.verts.push(p);
+                    _this.verts.push(p);
+                    // assign vertices to the nodes immediately under them
+                    var i = _this.backToFront.length;
+                    while (i-- > 0) {
+                        var node = _this.backToFront[i], r = node.rect;
+                        var dx = Math.abs(p.x - r.cx()), dy = Math.abs(p.y - r.cy());
+                        if (dx < r.width() / 2 && dy < r.height() / 2) {
+                            p.node = node;
+                            break;
+                        }
                     }
-                }
-            }); });
+                });
+            });
             lines.forEach(function (l, li) {
                 // create vertices at the intersections of nodes and lines
                 _this.nodes.forEach(function (v, i) {
@@ -4208,20 +4425,23 @@ var cola;
                 }
             });
         }
-        GridRouter.prototype.avg = function (a) {
-            return a.reduce(function (x, y) { return x + y; }) / a.length;
-        };
-        GridRouter.prototype.getGridDim = function (axis) {
+        GridRouter.prototype.avg = function (a) { return a.reduce(function (x, y) { return x + y; }) / a.length; };
+        // in the given axis, find sets of leaves overlapping in that axis
+        // center of each GridLine is average of all nodes in column
+        GridRouter.prototype.getGridLines = function (axis) {
             var columns = [];
             var ls = this.leaves.slice(0, this.leaves.length);
             while (ls.length > 0) {
-                var r = ls[0].rect;
-                var col = ls.filter(function (v) { return v.rect['overlap' + axis.toUpperCase()](r); });
+                // find a column of all leaves overlapping in axis with the first leaf
+                var overlapping = ls.filter(function (v) { return v.rect['overlap' + axis.toUpperCase()](ls[0].rect); });
+                var col = {
+                    nodes: overlapping,
+                    pos: this.avg(overlapping.map(function (v) { return v.rect['c' + axis](); }))
+                };
                 columns.push(col);
-                col.forEach(function (v) { return ls.splice(ls.indexOf(v), 1); });
-                col[axis] = this.avg(col.map(function (v) { return v.rect['c' + axis](); }));
+                col.nodes.forEach(function (v) { return ls.splice(ls.indexOf(v), 1); });
             }
-            columns.sort(function (x, y) { return x[axis] - y[axis]; });
+            columns.sort(function (a, b) { return a.pos - b.pos; });
             return columns;
         };
         // get the depth of the given node in the group hierarchy
@@ -4268,7 +4488,9 @@ var cola;
             var lineageLookup = {};
             path.lineages.forEach(function (v) { return lineageLookup[v.id] = {}; });
             var obstacles = path.commonAncestor.children.filter(function (v) { return !(v in lineageLookup); });
-            path.lineages.filter(function (v) { return v.parent !== path.commonAncestor; }).forEach(function (v) { return obstacles = obstacles.concat(v.parent.children.filter(function (c) { return c !== v.id; })); });
+            path.lineages
+                .filter(function (v) { return v.parent !== path.commonAncestor; })
+                .forEach(function (v) { return obstacles = obstacles.concat(v.parent.children.filter(function (c) { return c !== v.id; })); });
             return obstacles.map(function (v) { return _this.nodes[v]; });
         };
         // for the given routes, extract all the segments orthogonal to the axis x
@@ -4367,6 +4589,7 @@ var cola;
         };
         GridRouter.nudgeSegments = function (routes, x, y, leftOf, gap) {
             var vsegmentsets = GridRouter.getSegmentSets(routes, x, y);
+            // scan the grouped (by x) segment sets to find co-linear bundles
             for (var i = 0; i < vsegmentsets.length; i++) {
                 var ss = vsegmentsets[i];
                 var events = [];
@@ -4395,15 +4618,18 @@ var cola;
         };
         // obtain routes for the specified edges, nicely nudged apart
         // warning: edge paths may be reversed such that common paths are ordered consistently within bundles!
-        GridRouter.prototype.routeEdges = function (edges, gap, source, target) {
+        // @param edges list of edges
+        // @param nudgeGap how much to space parallel edge segements
+        // @param source function to retrieve the index of the source node for a given edge
+        // @param target function to retrieve the index of the target node for a given edge
+        // @returns an array giving, for each edge, an array of segments, each segment a pair of points in an array
+        GridRouter.prototype.routeEdges = function (edges, nudgeGap, source, target) {
             var _this = this;
             var routePaths = edges.map(function (e) { return _this.route(source(e), target(e)); });
             var order = cola.GridRouter.orderEdges(routePaths);
-            var routes = routePaths.map(function (e) {
-                return cola.GridRouter.makeSegments(e);
-            });
-            cola.GridRouter.nudgeSegments(routes, 'x', 'y', order, gap);
-            cola.GridRouter.nudgeSegments(routes, 'y', 'x', order, gap);
+            var routes = routePaths.map(function (e) { return cola.GridRouter.makeSegments(e); });
+            cola.GridRouter.nudgeSegments(routes, 'x', 'y', order, nudgeGap);
+            cola.GridRouter.nudgeSegments(routes, 'y', 'x', order, nudgeGap);
             cola.GridRouter.unreverseEdges(routes, routePaths);
             return routes;
         };
@@ -4462,7 +4688,8 @@ var cola;
                         f.reversed = true;
                         lcs = new cola.LongestCommonSubsequence(e, f);
                     }
-                    if ((lcs.si <= 0 || lcs.ti <= 0) && (lcs.si + lcs.length >= e.length || lcs.ti + lcs.length >= f.length)) {
+                    if ((lcs.si <= 0 || lcs.ti <= 0) &&
+                        (lcs.si + lcs.length >= e.length || lcs.ti + lcs.length >= f.length)) {
                         // the paths do not diverge, so make an arbitrary ordering decision
                         edgeOrder.push({ l: i, r: j });
                         continue;
@@ -4522,8 +4749,10 @@ var cola;
             this.obstacles.forEach(function (o) { return obstacleLookup[o.id] = o; });
             this.passableEdges = this.edges.filter(function (e) {
                 var u = _this.verts[e.source], v = _this.verts[e.target];
-                return !(u.node && u.node.id in obstacleLookup || v.node && v.node.id in obstacleLookup);
+                return !(u.node && u.node.id in obstacleLookup
+                    || v.node && v.node.id in obstacleLookup);
             });
+            // add dummy segments linking ports inside source and target
             for (var i = 1; i < source.ports.length; i++) {
                 var u = source.ports[0].id;
                 var v = source.ports[i].id;
@@ -4558,7 +4787,10 @@ var cola;
             var pathPoints = shortestPath.reverse().map(function (vi) { return _this.verts[vi]; });
             pathPoints.push(this.nodes[target.id].ports[0]);
             // filter out any extra end points that are inside the source or target (i.e. the dummy segments above)
-            return pathPoints.filter(function (v, i) { return !(i < pathPoints.length - 1 && pathPoints[i + 1].node === source && v.node === source || i > 0 && v.node === target && pathPoints[i - 1].node === target); });
+            return pathPoints.filter(function (v, i) {
+                return !(i < pathPoints.length - 1 && pathPoints[i + 1].node === source && v.node === source
+                    || i > 0 && v.node === target && pathPoints[i - 1].node === target);
+            });
         };
         GridRouter.getRoutePath = function (route, cornerradius, arrowwidth, arrowheight) {
             var result = {
@@ -4615,7 +4847,8 @@ var cola;
                         }
                         result.routepath += 'L ' + x + ' ' + y + ' ';
                         if (arrowheight > 0) {
-                            result.arrowpath = 'M ' + arrowtip[0] + ' ' + arrowtip[1] + ' L ' + arrowcorner1[0] + ' ' + arrowcorner1[1] + ' L ' + arrowcorner2[0] + ' ' + arrowcorner2[1];
+                            result.arrowpath = 'M ' + arrowtip[0] + ' ' + arrowtip[1] + ' L ' + arrowcorner1[0] + ' ' + arrowcorner1[1]
+                                + ' L ' + arrowcorner2[0] + ' ' + arrowcorner2[1];
                         }
                     }
                 }
@@ -4639,7 +4872,8 @@ var cola;
                 }
                 result.routepath += 'L ' + x + ' ' + y + ' ';
                 if (arrowheight > 0) {
-                    result.arrowpath = 'M ' + arrowtip[0] + ' ' + arrowtip[1] + ' L ' + arrowcorner1[0] + ' ' + arrowcorner1[1] + ' L ' + arrowcorner2[0] + ' ' + arrowcorner2[1];
+                    result.arrowpath = 'M ' + arrowtip[0] + ' ' + arrowtip[1] + ' L ' + arrowcorner1[0] + ' ' + arrowcorner1[1]
+                        + ' L ' + arrowcorner2[0] + ' ' + arrowcorner2[1];
                 }
             }
             return result;
@@ -4647,5 +4881,126 @@ var cola;
         return GridRouter;
     })();
     cola.GridRouter = GridRouter;
+})(cola || (cola = {}));
+/**
+ * Use cola to do a layout in 3D!! Yay.
+ * Pretty simple for the moment.
+ */
+var cola;
+(function (cola) {
+    var Link3D = (function () {
+        function Link3D(source, target) {
+            this.source = source;
+            this.target = target;
+        }
+        Link3D.prototype.actualLength = function (x) {
+            var _this = this;
+            return Math.sqrt(x.reduce(function (c, v) {
+                var dx = v[_this.target] - v[_this.source];
+                return c + dx * dx;
+            }, 0));
+        };
+        return Link3D;
+    })();
+    cola.Link3D = Link3D;
+    var Node3D = (function () {
+        function Node3D(x, y, z) {
+            if (x === void 0) { x = 0; }
+            if (y === void 0) { y = 0; }
+            if (z === void 0) { z = 0; }
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+        return Node3D;
+    })();
+    cola.Node3D = Node3D;
+    var Layout3D = (function () {
+        function Layout3D(nodes, links, idealLinkLength) {
+            var _this = this;
+            if (idealLinkLength === void 0) { idealLinkLength = 1; }
+            this.nodes = nodes;
+            this.links = links;
+            this.idealLinkLength = idealLinkLength;
+            this.constraints = null;
+            this.useJaccardLinkLengths = true;
+            this.result = new Array(Layout3D.k);
+            for (var i = 0; i < Layout3D.k; ++i) {
+                this.result[i] = new Array(nodes.length);
+            }
+            nodes.forEach(function (v, i) {
+                for (var _i = 0, _a = Layout3D.dims; _i < _a.length; _i++) {
+                    var dim = _a[_i];
+                    if (typeof v[dim] == 'undefined')
+                        v[dim] = Math.random();
+                }
+                _this.result[0][i] = v.x;
+                _this.result[1][i] = v.y;
+                _this.result[2][i] = v.z;
+            });
+        }
+        ;
+        Layout3D.prototype.linkLength = function (l) {
+            return l.actualLength(this.result);
+        };
+        Layout3D.prototype.start = function (iterations) {
+            var _this = this;
+            if (iterations === void 0) { iterations = 100; }
+            var n = this.nodes.length;
+            var linkAccessor = new LinkAccessor();
+            if (this.useJaccardLinkLengths)
+                cola.jaccardLinkLengths(this.links, linkAccessor, 1.5);
+            this.links.forEach(function (e) { return e.length *= _this.idealLinkLength; });
+            // Create the distance matrix that Cola needs
+            var distanceMatrix = (new cola.shortestpaths.Calculator(n, this.links, function (e) { return e.source; }, function (e) { return e.target; }, function (e) { return e.length; })).DistanceMatrix();
+            var D = cola.Descent.createSquareMatrix(n, function (i, j) { return distanceMatrix[i][j]; });
+            // G is a square matrix with G[i][j] = 1 iff there exists an edge between node i and node j
+            // otherwise 2.
+            var G = cola.Descent.createSquareMatrix(n, function () { return 2; });
+            this.links.forEach(function (_a) {
+                var source = _a.source, target = _a.target;
+                return G[source][target] = G[target][source] = 1;
+            });
+            this.descent = new cola.Descent(this.result, D);
+            this.descent.threshold = 1e-3;
+            this.descent.G = G;
+            //let constraints = this.links.map(e=> <any>{
+            //    axis: 'y', left: e.source, right: e.target, gap: e.length*1.5
+            //});
+            if (this.constraints)
+                this.descent.project = new cola.vpsc.Projection(this.nodes, null, null, this.constraints).projectFunctions();
+            for (var i = 0; i < this.nodes.length; i++) {
+                var v = this.nodes[i];
+                if (v.fixed) {
+                    this.descent.locks.add(i, [v.x, v.y, v.z]);
+                }
+            }
+            this.descent.run(iterations);
+            return this;
+        };
+        Layout3D.prototype.tick = function () {
+            this.descent.locks.clear();
+            for (var i = 0; i < this.nodes.length; i++) {
+                var v = this.nodes[i];
+                if (v.fixed) {
+                    this.descent.locks.add(i, [v.x, v.y, v.z]);
+                }
+            }
+            return this.descent.rungeKutta();
+        };
+        Layout3D.dims = ['x', 'y', 'z'];
+        Layout3D.k = Layout3D.dims.length;
+        return Layout3D;
+    })();
+    cola.Layout3D = Layout3D;
+    var LinkAccessor = (function () {
+        function LinkAccessor() {
+        }
+        LinkAccessor.prototype.getSourceIndex = function (e) { return e.source; };
+        LinkAccessor.prototype.getTargetIndex = function (e) { return e.target; };
+        LinkAccessor.prototype.getLength = function (e) { return e.length; };
+        LinkAccessor.prototype.setLength = function (e, l) { e.length = l; };
+        return LinkAccessor;
+    })();
 })(cola || (cola = {}));
 //# sourceMappingURL=cola.js.map

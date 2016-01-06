@@ -1,6 +1,11 @@
 ///<reference path="vpsc.ts"/>
-///<reference path="rbtree.d.ts"/>
+///<reference path="rbtree.ts"/>
 module cola.vpsc {
+    export interface Point {
+        x: number;
+        y: number
+    }
+
     export interface Leaf {
         bounds: Rectangle;
         variable: Variable;
@@ -86,9 +91,7 @@ module cola.vpsc {
          * @param y2 number second y coord of line
          * @return any intersection points found
          */
-        lineIntersections(x1: number, y1: number, x2: number, y2: number): Array<{
-            x: number; y: number
-        }> {
+        lineIntersections(x1: number, y1: number, x2: number, y2: number): Array<Point> {
             var sides = [[this.x, this.y, this.X, this.y],
                     [this.X, this.y, this.X, this.Y],
                     [this.X, this.Y, this.x, this.Y],
@@ -109,14 +112,12 @@ module cola.vpsc {
          * @param y2 number second y coord of line
          * @return any intersection points found
          */
-        rayIntersection(x2: number, y2: number): {
-            x: number; y: number
-        } {
+        rayIntersection(x2: number, y2: number): Point {
             var ints = this.lineIntersections(this.cx(), this.cy(), x2, y2);
             return ints.length > 0 ? ints[0] : null;
         }
 
-        vertices(): { x: number; y: number }[] {
+        vertices(): Point[] {
             return [
                 { x: this.x, y: this.y },
                 { x: this.X, y: this.y },
@@ -129,7 +130,7 @@ module cola.vpsc {
             x1: number, y1: number,
             x2: number, y2: number,
             x3: number, y3: number,
-            x4: number, y4: number): { x: number; y: number } {
+            x4: number, y4: number): Point {
             var dx12 = x2 - x1, dx34 = x4 - x3,
                 dy12 = y2 - y1, dy34 = y4 - y3,
                 denominator = dy34 * dx12 - dx34 * dy12;
@@ -153,20 +154,21 @@ module cola.vpsc {
         }
     }
 
-    export function makeEdgeBetween(link: any, source: Rectangle, target: Rectangle, ah: number) {
-        var si = source.rayIntersection(target.cx(), target.cy());
-        if (!si) si = { x: source.cx(), y: source.cy() };
-        var ti = target.rayIntersection(source.cx(), source.cy());
-        if (!ti) ti = { x: target.cx(), y: target.cy() };
-        var dx = ti.x - si.x,
+    export function makeEdgeBetween(source: Rectangle, target: Rectangle, ah: number)
+        : { sourceIntersection: Point; targetIntersection: Point; arrowStart: Point } {
+        const si = source.rayIntersection(target.cx(), target.cy()) || { x: source.cx(), y: source.cy() },
+            ti = target.rayIntersection(source.cx(), source.cy()) || { x: target.cx(), y: target.cy() },
+            dx = ti.x - si.x,
             dy = ti.y - si.y,
             l = Math.sqrt(dx * dx + dy * dy), al = l - ah;
-        link.sourceIntersection = si;
-        link.targetIntersection = ti;
-        link.arrowStart = { x: si.x + al * dx / l, y: si.y + al * dy / l };
+        return {
+            sourceIntersection: si,
+            targetIntersection: ti,
+            arrowStart: { x: si.x + al * dx / l, y: si.y + al * dy / l }
+        }
     }
 
-    export function makeEdgeTo(s: { x: number; y: number }, target: Rectangle, ah: number): { x: number; y: number } {
+    export function makeEdgeTo(s: { x: number; y: number }, target: Rectangle, ah: number): Point {
         var ti = target.rayIntersection(s.x, s.y);
         if (!ti) ti = { x: target.cx(), y: target.cy() };
         var dx = ti.x - s.x,
@@ -176,7 +178,7 @@ module cola.vpsc {
     }
 
     class Node {
-        prev: RBTree<Node>;
+        prev: cola.vpsc.RBTree<Node>;
         next: RBTree<Node>;
 
         constructor(public v: Variable, public r: Rectangle, public pos: number) {
@@ -199,6 +201,10 @@ module cola.vpsc {
         if (a.isOpen) {
             // open must come before close
             return -1;
+        }
+        if (b.isOpen) {
+            // open must come before close
+            return 1;
         }
         return 0;
     }
@@ -372,9 +378,7 @@ module cola.vpsc {
         var solver = new vpsc.Solver(vs, cs);
         solver.solve();
         vs.forEach((v, i) => rs[i].setXCentre(v.position()));
-        vs = rs.map(function (r) {
-            return new vpsc.Variable(r.cy());
-        });
+        vs = rs.map(r=> new vpsc.Variable(r.cy()));
         cs = vpsc.generateYConstraints(rs, vs);
         solver = new vpsc.Solver(vs, cs);
         solver.solve();
@@ -383,6 +387,7 @@ module cola.vpsc {
 
     export interface GraphNode extends Leaf {
         fixed: boolean;
+        fixedWeight?: number;
         width: number;
         height: number;
         x: number;
@@ -481,7 +486,7 @@ module cola.vpsc {
         private setupVariablesAndBounds(x0: number[], y0: number[], desired: number[], getDesired: (v: GraphNode) => number) {
             this.nodes.forEach((v, i) => {
                 if (v.fixed) {
-                    v.variable.weight = 1000;
+                    v.variable.weight = v.fixedWeight ? v.fixedWeight : 1000;
                     desired[i] = getDesired(v);
                 } else {
                     v.variable.weight = 1;
@@ -541,6 +546,7 @@ module cola.vpsc {
             this.nodes.forEach(updateNodeBounds);
             if (this.rootGroup && this.avoidOverlaps) {
                 this.groups.forEach(updateGroupBounds);
+                computeGroupBounds(this.rootGroup);
             }
         }
 
